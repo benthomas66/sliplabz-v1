@@ -1,0 +1,21 @@
+{
+  "name": "sliplabz-v1-identity",
+  "version": "0.1.0",
+  "private": true,
+  "description": "SlipLabz V1-1 canonical identity and mapping foundation. Not a framework project.",
+  "type": "module",
+  "engines": {
+    "node": ">=20.10.0"
+  },
+  "scripts": {
+    "test": "node --import tsx --test tests/**/*.test.ts",
+    "test:identity": "node --import tsx --test tests/identity/*.test.ts",
+    "test:migrations": "node --import tsx --test tests/migrations/*.test.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.5.0"
+  }
+}

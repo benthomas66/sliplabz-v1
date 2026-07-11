@@ -1,0 +1,42 @@
+# SlipLabz V1 — minimal Supabase CLI project configuration.
+#
+# This file exists so `supabase db reset` and future migration validation
+# can operate on this project. It does NOT authorize:
+#   - Supabase Auth (deferred beyond V1-1, see governance GD-1)
+#   - direct browser-to-database access (deferred)
+#   - RLS entitlement policies (deferred to V1-9)
+#   - generated client types (deferred)
+#
+# Ports are the Supabase-CLI defaults; adjust locally as needed.
+
+project_id = "sliplabz-v1"
+
+[db]
+port = 54322
+major_version = 15
+
+[db.pooler]
+enabled = false
+
+[api]
+enabled = true
+port = 54321
+schemas = ["public"]
+extra_search_path = ["public", "extensions"]
+max_rows = 1000
+
+[studio]
+enabled = false
+
+[inbucket]
+enabled = false
+
+[auth]
+# Deferred — governance GD-1 does not authorize Supabase Auth in V1-1.
+enabled = false
+
+[storage]
+enabled = false
+
+[edge_runtime]
+enabled = false

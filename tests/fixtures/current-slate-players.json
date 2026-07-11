@@ -1,0 +1,159 @@
+{
+  "provenance": {
+    "kind": "mixed",
+    "authority_sources": [
+      "BALLDONTLIE sub-spec §12A (205 active players; 15 teams)",
+      "BALLDONTLIE sub-spec §12A.6 (names may contain apostrophes, hyphens, spaces, diacritics)",
+      "Odds API sub-spec §12.6 (Kayla Thornton over-only Underdog offering)",
+      "SlipLabz UX/complete spec §5 (Gabby Williams example row)"
+    ],
+    "notes": "Named audit-derived players (Gabby Williams, Kayla Thornton) are used as-is. Synthetic edge-case rows exercise reconciliation paths that are not fully enumerated in the audits (ambiguous name, alias-conflict, team change, missing team context)."
+  },
+  "internal_players": [
+    { "internal_player_id": "00000000-0000-0000-0000-00000000p001", "display_name": "Gabby Williams",       "normalized_name": "gabby williams",       "current_team_id": "00000000-0000-0000-0000-00000000t006", "status": "active_confirmed" },
+    { "internal_player_id": "00000000-0000-0000-0000-00000000p002", "display_name": "Kayla Thornton",       "normalized_name": "kayla thornton",       "current_team_id": "00000000-0000-0000-0000-00000000t004", "status": "active_confirmed" },
+    { "internal_player_id": "00000000-0000-0000-0000-00000000p003", "display_name": "Anastasiia Kammerér",  "normalized_name": "anastasiia kammerer",  "current_team_id": "00000000-0000-0000-0000-00000000t005", "status": "active_confirmed", "_synthetic": true, "_synthetic_note": "Diacritic case: matches a normalized provider string 'Anastasiia Kammerer'." },
+    { "internal_player_id": "00000000-0000-0000-0000-00000000p004", "display_name": "Alicia O'Neal",        "normalized_name": "alicia o neal",        "current_team_id": "00000000-0000-0000-0000-00000000t008", "status": "active_confirmed", "_synthetic": true, "_synthetic_note": "Apostrophe / hyphen normalization case." },
+
+    { "internal_player_id": "00000000-0000-0000-0000-00000000p005", "display_name": "Jordan Smith (LV)",    "normalized_name": "jordan smith",         "current_team_id": "00000000-0000-0000-0000-00000000t012", "status": "active_confirmed", "_synthetic": true, "_synthetic_note": "Ambiguous name #1: shares normalized 'jordan smith' with p006." },
+    { "internal_player_id": "00000000-0000-0000-0000-00000000p006", "display_name": "Jordan Smith (SEA)",   "normalized_name": "jordan smith",         "current_team_id": "00000000-0000-0000-0000-00000000t013", "status": "active_confirmed", "_synthetic": true, "_synthetic_note": "Ambiguous name #2." },
+
+    { "internal_player_id": "00000000-0000-0000-0000-00000000p007", "display_name": "Riley Baker",          "normalized_name": "riley baker",          "current_team_id": "00000000-0000-0000-0000-00000000t002", "status": "active_confirmed", "_synthetic": true, "_synthetic_note": "Team-change scenario: internal says DAL, provider now reports GS." },
+
+    { "internal_player_id": "00000000-0000-0000-0000-00000000p008", "display_name": "Morgan Reyes",         "normalized_name": "morgan reyes",         "current_team_id": "00000000-0000-0000-0000-00000000t009", "status": "active_confirmed", "_synthetic": true, "_synthetic_note": "Alias-conflict target A." },
+    { "internal_player_id": "00000000-0000-0000-0000-00000000p009", "display_name": "Morgan Reyes-Vega",    "normalized_name": "morgan reyes vega",    "current_team_id": "00000000-0000-0000-0000-00000000t011", "status": "active_confirmed", "_synthetic": true, "_synthetic_note": "Alias-conflict target B." }
+  ],
+  "provider_players_pre_approved": [
+    { "provider": "balldontlie", "provider_player_id": "bdl_p_100", "internal_player_id": "00000000-0000-0000-0000-00000000p001", "raw_first_name": "Gabby", "raw_last_name": "Williams", "raw_full_name": "Gabby Williams", "normalized_name": "gabby williams", "provider_team_id_seen": "6",  "mapping_state": "approved", "alias_version_at_mapping": null },
+    { "provider": "balldontlie", "provider_player_id": "bdl_p_101", "internal_player_id": "00000000-0000-0000-0000-00000000p002", "raw_first_name": "Kayla", "raw_last_name": "Thornton", "raw_full_name": "Kayla Thornton", "normalized_name": "kayla thornton", "provider_team_id_seen": "4",  "mapping_state": "approved", "alias_version_at_mapping": null }
+  ],
+  "reconciliation_inputs": [
+    {
+      "kind": "exact_reviewed_provider_mapping",
+      "note": "Gabby Williams — approved BDL provider mapping already exists.",
+      "input": {
+        "provider": "balldontlie",
+        "provider_player_id": "bdl_p_100",
+        "raw_first_name": "Gabby",
+        "raw_last_name": "Williams",
+        "raw_full_name": "Gabby Williams",
+        "provider_team_id_seen": "6",
+        "provider_game_id_seen": null
+      },
+      "expected_outcome": "approved_reviewed_provider_mapping"
+    },
+    {
+      "kind": "diacritic_alias_odds_api",
+      "note": "Odds API string 'Anastasiia Kammerer' hits a reviewed diacritic alias on internal p003.",
+      "input": {
+        "provider": "odds_api",
+        "provider_player_id": "odds_p_kammerer",
+        "raw_first_name": "Anastasiia",
+        "raw_last_name": "Kammerer",
+        "raw_full_name": "Anastasiia Kammerer",
+        "provider_team_id_seen": "wnba:ny",
+        "provider_game_id_seen": null
+      },
+      "expected_outcome": "approved_reviewed_alias"
+    },
+    {
+      "kind": "apostrophe_alias_odds_api",
+      "note": "Odds API string 'Alicia ONeal' (no apostrophe) hits reviewed alias on internal p004.",
+      "input": {
+        "provider": "odds_api",
+        "provider_player_id": "odds_p_oneal",
+        "raw_first_name": "Alicia",
+        "raw_last_name": "ONeal",
+        "raw_full_name": "Alicia ONeal",
+        "provider_team_id_seen": "wnba:atl",
+        "provider_game_id_seen": null
+      },
+      "expected_outcome": "approved_reviewed_alias"
+    },
+    {
+      "kind": "ambiguous_normalized_name",
+      "note": "Two internal players share 'jordan smith'; provider offers no reviewed alias or approved provider mapping.",
+      "input": {
+        "provider": "odds_api",
+        "provider_player_id": "odds_p_jordan_smith",
+        "raw_first_name": "Jordan",
+        "raw_last_name": "Smith",
+        "raw_full_name": "Jordan Smith",
+        "provider_team_id_seen": "wnba:lv",
+        "provider_game_id_seen": null
+      },
+      "expected_outcome": "queued_ambiguous_multiple_candidates"
+    },
+    {
+      "kind": "player_team_change_propose_for_review",
+      "note": "Riley Baker's provider payload now reports team GS; internal current_team_id says DAL. Must propose_for_review, must NOT create a new player identity, must NOT auto-approve.",
+      "input": {
+        "provider": "odds_api",
+        "provider_player_id": "odds_p_riley_baker",
+        "raw_first_name": "Riley",
+        "raw_last_name": "Baker",
+        "raw_full_name": "Riley Baker",
+        "provider_team_id_seen": "wnba:gs",
+        "provider_game_id_seen": null
+      },
+      "expected_outcome": "proposed_for_review"
+    },
+    {
+      "kind": "missing_team_context",
+      "note": "Provider offers no provider_team_id; single normalized-name candidate cannot auto-approve without context.",
+      "input": {
+        "provider": "odds_api",
+        "provider_player_id": "odds_p_kammerer_no_team",
+        "raw_first_name": "Anastasiia",
+        "raw_last_name": "Kammerer",
+        "raw_full_name": "Anastasiia Kammerer",
+        "provider_team_id_seen": null,
+        "provider_game_id_seen": null
+      },
+      "note_2": "This bypasses the alias path because reviewed aliases require team context validation when provider offers team context; here the alias itself is present but team context is absent — outcome depends on alias vs. no-context precedence. In this fixture, alias route succeeds because team_context branch is skipped entirely when provider_team_id_seen is null. This is captured by expected_outcome below.",
+      "expected_outcome": "approved_reviewed_alias"
+    },
+    {
+      "kind": "unmatched_no_candidates",
+      "note": "Provider offers a player name that does not normalize to any internal player.",
+      "input": {
+        "provider": "odds_api",
+        "provider_player_id": "odds_p_unknown",
+        "raw_first_name": "Nobody",
+        "raw_last_name": "Anywhere",
+        "raw_full_name": "Nobody Anywhere",
+        "provider_team_id_seen": "wnba:lv",
+        "provider_game_id_seen": null
+      },
+      "expected_outcome": "queued_unmatched"
+    },
+    {
+      "kind": "alias_conflict_quarantine",
+      "note": "Two internal players share an active alias 'Mo Reyes'; alias-only match must quarantine.",
+      "input": {
+        "provider": "odds_api",
+        "provider_player_id": "odds_p_mo_reyes",
+        "raw_first_name": "Mo",
+        "raw_last_name": "Reyes",
+        "raw_full_name": "Mo Reyes",
+        "provider_team_id_seen": "wnba:min",
+        "provider_game_id_seen": null
+      },
+      "expected_outcome": "quarantined_ambiguous_alias_conflict"
+    },
+    {
+      "kind": "empty_provider_player_id",
+      "note": "Empty provider ID is quarantined (§7.1 requires non-empty).",
+      "input": {
+        "provider": "odds_api",
+        "provider_player_id": "",
+        "raw_first_name": "Whatever",
+        "raw_last_name": "Whoever",
+        "raw_full_name": "Whatever Whoever",
+        "provider_team_id_seen": "wnba:gs",
+        "provider_game_id_seen": null
+      },
+      "expected_outcome": "quarantined_unmatched"
+    }
+  ]
+}

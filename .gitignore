@@ -10,3 +10,6 @@
 .vscode/
 .idea/
 .claude/
+
+# Node dependency tree — package.json + package-lock.json are the source of truth
+node_modules/

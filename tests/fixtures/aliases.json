@@ -1,0 +1,89 @@
+{
+  "provenance": {
+    "kind": "synthetic",
+    "authority_sources": [
+      "Complete spec §7.3 (reviewed alias precedence)",
+      "BALLDONTLIE sub-spec §12A.6 (name-matching implications)"
+    ],
+    "notes": "All aliases here are synthetic. Each carries approved_by and approved_at to demonstrate that the schema treats aliases as reviewed decisions, never as normalization by-products."
+  },
+  "player_aliases": [
+    {
+      "alias_id": "00000000-0000-0000-0000-00000000a001",
+      "internal_entity_id": "00000000-0000-0000-0000-00000000p003",
+      "scope_kind": "odds_api",
+      "alias_type": "match_candidate",
+      "alias_text": "Anastasiia Kammerer",
+      "normalized_alias": "anastasiia kammerer",
+      "alias_version": 1,
+      "is_active": true,
+      "approved_by": "reviewer:v1-1-fixture",
+      "approved_at": "2026-07-10T00:00:00Z"
+    },
+    {
+      "alias_id": "00000000-0000-0000-0000-00000000a002",
+      "internal_entity_id": "00000000-0000-0000-0000-00000000p004",
+      "scope_kind": "odds_api",
+      "alias_type": "match_candidate",
+      "alias_text": "Alicia ONeal",
+      "normalized_alias": "alicia oneal",
+      "alias_version": 1,
+      "is_active": true,
+      "approved_by": "reviewer:v1-1-fixture",
+      "approved_at": "2026-07-10T00:00:00Z"
+    },
+    {
+      "alias_id": "00000000-0000-0000-0000-00000000a003",
+      "internal_entity_id": "00000000-0000-0000-0000-00000000p008",
+      "scope_kind": "odds_api",
+      "alias_type": "match_candidate",
+      "alias_text": "Mo Reyes",
+      "normalized_alias": "mo reyes",
+      "alias_version": 1,
+      "is_active": true,
+      "approved_by": "reviewer:v1-1-fixture",
+      "approved_at": "2026-07-10T00:00:00Z"
+    },
+    {
+      "alias_id": "00000000-0000-0000-0000-00000000a004",
+      "internal_entity_id": "00000000-0000-0000-0000-00000000p009",
+      "scope_kind": "odds_api",
+      "alias_type": "match_candidate",
+      "alias_text": "Mo Reyes",
+      "normalized_alias": "mo reyes",
+      "alias_version": 1,
+      "is_active": true,
+      "approved_by": "reviewer:v1-1-fixture",
+      "approved_at": "2026-07-10T00:00:00Z",
+      "conflict_note": "Intentional conflict with a003 to exercise ambiguous_alias_conflict quarantine."
+    },
+    {
+      "alias_id": "00000000-0000-0000-0000-00000000a005-old",
+      "internal_entity_id": "00000000-0000-0000-0000-00000000p001",
+      "scope_kind": "odds_api",
+      "alias_type": "display",
+      "alias_text": "G. Williams",
+      "normalized_alias": "g williams",
+      "alias_version": 1,
+      "is_active": false,
+      "superseded_by": "00000000-0000-0000-0000-00000000a005-new",
+      "superseded_at": "2026-07-10T00:00:00Z",
+      "approved_by": "reviewer:v1-1-fixture",
+      "approved_at": "2026-05-01T00:00:00Z",
+      "note": "Old superseded display alias — exercises supersession invariants."
+    },
+    {
+      "alias_id": "00000000-0000-0000-0000-00000000a005-new",
+      "internal_entity_id": "00000000-0000-0000-0000-00000000p001",
+      "scope_kind": "odds_api",
+      "alias_type": "display",
+      "alias_text": "Gabby Williams",
+      "normalized_alias": "gabby williams",
+      "alias_version": 2,
+      "is_active": true,
+      "approved_by": "reviewer:v1-1-fixture",
+      "approved_at": "2026-07-10T00:00:00Z"
+    }
+  ],
+  "team_aliases": []
+}

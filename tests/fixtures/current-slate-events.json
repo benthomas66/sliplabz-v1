@@ -1,0 +1,112 @@
+{
+  "provenance": {
+    "kind": "mixed",
+    "authority_sources": [
+      "Odds API sub-spec §5 (2026-07-10 WNBA event universe: 6 events, 12 teams, IDs and commence_time verbatim)"
+    ],
+    "notes": "Odds API event IDs, matchups, and commence times are audit-verbatim. Internal game UUIDs are synthetic-deterministic (unique per game). BALLDONTLIE provider_game_id values are synthetic because the audits enumerate teams and player-stat rows but do not list BDL game IDs for these specific matchups."
+  },
+  "internal_games": [
+    { "internal_game_id": "00000000-0000-0000-0000-00000000g001", "season": 2026, "season_type": 2, "home_team_id": "00000000-0000-0000-0000-00000000t006", "away_team_id": "00000000-0000-0000-0000-00000000t004", "scheduled_start_utc": "2026-07-10T23:40:00Z", "actual_start_utc": null, "status": "scheduled", "postseason": false },
+    { "internal_game_id": "00000000-0000-0000-0000-00000000g002", "season": 2026, "season_type": 2, "home_team_id": "00000000-0000-0000-0000-00000000t014", "away_team_id": "00000000-0000-0000-0000-00000000t002", "scheduled_start_utc": "2026-07-10T23:40:00Z", "actual_start_utc": null, "status": "scheduled", "postseason": false },
+    { "internal_game_id": "00000000-0000-0000-0000-00000000g003", "season": 2026, "season_type": 2, "home_team_id": "00000000-0000-0000-0000-00000000t003", "away_team_id": "00000000-0000-0000-0000-00000000t010", "scheduled_start_utc": "2026-07-11T02:10:00Z", "actual_start_utc": null, "status": "scheduled", "postseason": false },
+    { "internal_game_id": "00000000-0000-0000-0000-00000000g004", "season": 2026, "season_type": 2, "home_team_id": "00000000-0000-0000-0000-00000000t011", "away_team_id": "00000000-0000-0000-0000-00000000t005", "scheduled_start_utc": "2026-07-11T17:00:00Z", "actual_start_utc": null, "status": "scheduled", "postseason": false },
+    { "internal_game_id": "00000000-0000-0000-0000-00000000g005", "season": 2026, "season_type": 2, "home_team_id": "00000000-0000-0000-0000-00000000t008", "away_team_id": "00000000-0000-0000-0000-00000000t015", "scheduled_start_utc": "2026-07-11T20:00:00Z", "actual_start_utc": null, "status": "scheduled", "postseason": false },
+    { "internal_game_id": "00000000-0000-0000-0000-00000000g006", "season": 2026, "season_type": 2, "home_team_id": "00000000-0000-0000-0000-00000000t012", "away_team_id": "00000000-0000-0000-0000-00000000t001", "scheduled_start_utc": "2026-07-11T22:00:00Z", "actual_start_utc": null, "status": "scheduled", "postseason": false }
+  ],
+  "odds_api_events": [
+    { "provider_game_id": "1547b39904db439304af0dfdacaa469d", "raw_home_team": "Connecticut Sun",      "raw_away_team": "Golden State Valkyries", "raw_commence_time": "2026-07-10T23:40:00Z", "expected_outcome": "approved_exact" },
+    { "provider_game_id": "7295f7e8db8d22124fdf261cda31a1f6", "raw_home_team": "Toronto Tempo",       "raw_away_team": "Dallas Wings",           "raw_commence_time": "2026-07-10T23:40:00Z", "expected_outcome": "approved_exact" },
+    { "provider_game_id": "14c1ed8012d1c1a70778c1d1aa348e83", "raw_home_team": "Los Angeles Sparks",  "raw_away_team": "Chicago Sky",            "raw_commence_time": "2026-07-11T02:10:00Z", "expected_outcome": "approved_exact" },
+    { "provider_game_id": "93c27f5318a98fdd2a9bfbc42269f134", "raw_home_team": "Minnesota Lynx",      "raw_away_team": "New York Liberty",       "raw_commence_time": "2026-07-11T17:00:00Z", "expected_outcome": "approved_exact" },
+    { "provider_game_id": "9f2c4d943190edd1073d4cd6760fcf8c", "raw_home_team": "Atlanta Dream",       "raw_away_team": "Portland Fire",          "raw_commence_time": "2026-07-11T20:00:00Z", "expected_outcome": "approved_exact" },
+    { "provider_game_id": "dbbae9c1944a4874fe492f9fe23d8f62", "raw_home_team": "Las Vegas Aces",      "raw_away_team": "Phoenix Mercury",        "raw_commence_time": "2026-07-11T22:00:00Z", "expected_outcome": "approved_exact" }
+  ],
+  "synthetic_edge_cases": [
+    {
+      "synthetic": true,
+      "kind": "time_tolerance_within_15m",
+      "provider_game_id": "synthetic_evt_tolerance_1",
+      "raw_home_team": "Connecticut Sun",
+      "raw_away_team": "Golden State Valkyries",
+      "raw_commence_time": "2026-07-10T23:52:00Z",
+      "expected_outcome": "approved_tolerance",
+      "expected_delta_seconds": -720
+    },
+    {
+      "synthetic": true,
+      "kind": "time_tolerance_edge_exactly_15m",
+      "provider_game_id": "synthetic_evt_tolerance_edge",
+      "raw_home_team": "Connecticut Sun",
+      "raw_away_team": "Golden State Valkyries",
+      "raw_commence_time": "2026-07-10T23:55:00Z",
+      "expected_outcome": "approved_tolerance",
+      "expected_delta_seconds": -900
+    },
+    {
+      "synthetic": true,
+      "kind": "time_window_exceeded_beyond_15m",
+      "provider_game_id": "synthetic_evt_time_exceeded",
+      "raw_home_team": "Connecticut Sun",
+      "raw_away_team": "Golden State Valkyries",
+      "raw_commence_time": "2026-07-10T22:00:00Z",
+      "expected_outcome": "quarantined_time_window_exceeded"
+    },
+    {
+      "synthetic": true,
+      "kind": "unmatched_event",
+      "provider_game_id": "synthetic_evt_unmatched",
+      "raw_home_team": "Washington Mystics",
+      "raw_away_team": "Indiana Fever",
+      "raw_commence_time": "2026-07-10T23:40:00Z",
+      "expected_outcome": "queued_unmatched"
+    },
+    {
+      "synthetic": true,
+      "kind": "reversed_home_away",
+      "provider_game_id": "synthetic_evt_reversed",
+      "raw_home_team": "Golden State Valkyries",
+      "raw_away_team": "Connecticut Sun",
+      "raw_commence_time": "2026-07-10T23:40:00Z",
+      "expected_outcome": "quarantined_ordered_teams_disagree"
+    },
+    {
+      "synthetic": true,
+      "kind": "unresolved_provider_team",
+      "provider_game_id": "synthetic_evt_unresolved_team",
+      "raw_home_team": "Unknown Franchise",
+      "raw_away_team": "Connecticut Sun",
+      "raw_commence_time": "2026-07-10T23:40:00Z",
+      "expected_outcome": "queued_unresolved_provider_team"
+    },
+    {
+      "synthetic": true,
+      "kind": "ambiguous_multiple_candidates",
+      "note": "Two internal games share the same ordered team pair at different times, both within 15 minutes of the provider commence_time.",
+      "provider_game_id": "synthetic_evt_ambiguous",
+      "raw_home_team": "Atlanta Dream",
+      "raw_away_team": "Portland Fire",
+      "raw_commence_time": "2026-07-11T20:05:00Z",
+      "expected_outcome": "queued_ambiguous_multiple_candidates",
+      "extra_internal_game": {
+        "internal_game_id": "00000000-0000-0000-0000-00000000g005b",
+        "season": 2026, "season_type": 2,
+        "home_team_id": "00000000-0000-0000-0000-00000000t008",
+        "away_team_id": "00000000-0000-0000-0000-00000000t015",
+        "scheduled_start_utc": "2026-07-11T20:10:00Z",
+        "actual_start_utc": null,
+        "status": "scheduled",
+        "postseason": false
+      }
+    },
+    {
+      "synthetic": true,
+      "kind": "self_match_invalid",
+      "provider_game_id": "synthetic_evt_self_match",
+      "raw_home_team": "Chicago Sky",
+      "raw_away_team": "Chicago Sky",
+      "raw_commence_time": "2026-07-11T02:10:00Z",
+      "expected_outcome": "quarantined_self_match_invalid"
+    }
+  ]
+}
