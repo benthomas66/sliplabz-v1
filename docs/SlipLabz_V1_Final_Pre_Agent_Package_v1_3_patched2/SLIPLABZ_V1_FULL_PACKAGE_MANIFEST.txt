@@ -1,0 +1,41 @@
+SlipLabz V1 Full Report Package
+Created: 2026-07-10
+Revision: 1.3
+
+Current active authorities and reports:
+- SLIPLABZ_V1_REPO_SPEC_README_v1_3.md
+- SLIPLABZ_APPLICATION_V1_COMPLETE_SPEC_v1_3.md
+- SlipLabz_Application_V1_Complete_Spec_v1_3.docx
+- SLIPLABZ_V1_UX_UI_SUBSPEC_v1_3.md
+- SlipLabz_V1_UX_UI_Subspec_v1_3.docx
+- SLIPLABZ_V1_AGENT_TICKET_QUEUE_v1_3.md
+- SLIPLABZ_V1_TICKET_0_AUTHORITY_REPO_READBACK_PROMPT_v1_3.md
+- SLIPLABZ_BALLDONTLIE_V1_DATA_SUBSPEC_AUDITED.md
+- SLIPLABZ_ODDS_API_V1_DATA_SUBSPEC_AUDITED.md (revision 0.10)
+- SLIPLABZ_DATA_INGESTION_INTEGRATION_AUDIT.md
+- SLIPLABZ_V1_FINAL_PRE_AGENT_AUDIT_v1_3.md
+
+Consistency patch (2026-07-10):
+- Documentation-consistency patch applied to revision 1.3 after the final pre-agent audit. No product, spec, dependency, price, or guardrail change.
+- Ticket queue Section 15 checkpoints now include V1-7/V1-8 and order V1-4b after V1-4.
+- Removed a duplicated dependency sentence in ticket queue Section 2.
+- Clarified historical-quota region model (ceil(book count / 10)) in complete spec Section 10.13 and Odds API sub-spec Section 14.11.2.
+- Integration audit now cites shipped sub-spec revisions (BALLDONTLIE 0.9, Odds API 0.10).
+
+Document formats:
+- Markdown files are canonical and authoritative. DOCX files are non-authoritative human-readable exports; if a DOCX disagrees with its Markdown, the Markdown governs.
+
+Execution-consistency patch (2026-07-10):
+- Authority hierarchy unified across complete spec, ticket queue, and Ticket 0 (complete spec > UX/UI sub-spec > provider sub-specs > explicitly locked repo authorities > approved ticket > current implementation > agent assumptions).
+- Ticket 0 now requires reading the UX/UI sub-spec; "locked" defined by explicit status/version declaration, not filename.
+- Paid enforcement defined as two-stage (capability filtering + fixtures before V1-9; account-backed enforcement, Stripe, usage counters, anti-enumeration during V1-9); V1-5 acceptance reworded; provisional fixture limits noted in earlier tickets.
+- Anonymous vs free-registered access defined; exact Compare-limit relationship left as an open V1-9 decision.
+- Environment terms (local, internal/admin, access-controlled staging, customer-facing launch) defined distinctly.
+- Uniform "Report and halt" added to every ticket body.
+
+Supersession note:
+- Revision 1.3 supersedes 1.1 and 1.2 product, UX, prompt, and ticket authorities.
+- Active commercial policy remains $7.99/month for full access with a useful limited free tier.
+- Paid feature locks remain near the end of the build in V1-9.
+- Historical seeding is a non-blocking prelaunch track after V1-4.
+- Customer launch still requires provider-rights approval and a reviewed historical-seed or forward-only disposition.

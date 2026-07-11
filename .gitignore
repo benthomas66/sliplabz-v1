@@ -1,0 +1,12 @@
+# macOS filesystem metadata
+.DS_Store
+
+# Local environment files (secrets never committed; example file explicitly allowed later)
+.env
+.env.*
+!.env.example
+
+# Editor / IDE / tooling metadata
+.vscode/
+.idea/
+.claude/
