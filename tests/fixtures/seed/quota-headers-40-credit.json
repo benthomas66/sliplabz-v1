@@ -1,0 +1,20 @@
+{
+  "provenance": {
+    "kind": "audit_derived",
+    "authority_sources": [
+      "Odds sub-spec §14.11.2 (default 8-book × 4-market = 40 credits per event)",
+      "Complete spec §10.13 (same formula)"
+    ],
+    "notes": "Headers-only fixture: only the quota values matter for the forecast reconciliation test."
+  },
+  "requested": {
+    "market_count": 4,
+    "bookmaker_count": 8
+  },
+  "headers": {
+    "content-type": "application/json",
+    "x-requests-last": 40,
+    "x-requests-remaining": 45000,
+    "x-requests-used": 15000
+  }
+}

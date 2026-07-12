@@ -1,0 +1,79 @@
+{
+  "provenance": {
+    "kind": "synthetic",
+    "authority_sources": [
+      "Odds sub-spec §14.11.1 rule 5 (return the closest snapshot at or before boundary)",
+      "Odds sub-spec §10.7 (outcome shape mirrored)",
+      "Odds sub-spec §18.1 (sportsbook eligibility)",
+      "Odds sub-spec §11.4/§12.4 (PrizePicks/Underdog must not enter sportsbook consensus)"
+    ],
+    "notes": "Clean final pre-tip snapshot. timestamp exactly matches the requested close boundary. Two eligible sportsbooks + one PrizePicks row (must be filtered)."
+  },
+  "requested_close_boundary_utc": "2026-05-08T23:00:00Z",
+  "http_status": 200,
+  "headers": {
+    "content-type": "application/json",
+    "x-requests-last": 40,
+    "x-requests-remaining": 959,
+    "x-requests-used": 41
+  },
+  "response_body": {
+    "timestamp": "2026-05-08T23:00:00Z",
+    "previous_timestamp": "2026-05-08T22:50:00Z",
+    "next_timestamp": "2026-05-08T23:10:00Z",
+    "data": {
+      "id": "hs01_gsval_at_connsun",
+      "sport_key": "basketball_wnba",
+      "commence_time": "2026-05-08T23:00:00Z",
+      "home_team": "Connecticut Sun",
+      "away_team": "Golden State Valkyries",
+      "bookmakers": [
+        {
+          "key": "draftkings",
+          "title": "DraftKings",
+          "last_update": "2026-05-08T22:59:12Z",
+          "markets": [
+            {
+              "key": "player_points",
+              "last_update": "2026-05-08T22:59:12Z",
+              "outcomes": [
+                { "name": "Over",  "description": "Gabby Williams", "price": -115, "point": 12.5 },
+                { "name": "Under", "description": "Gabby Williams", "price": -105, "point": 12.5 }
+              ]
+            }
+          ]
+        },
+        {
+          "key": "fanduel",
+          "title": "FanDuel",
+          "last_update": "2026-05-08T22:58:55Z",
+          "markets": [
+            {
+              "key": "player_points",
+              "last_update": "2026-05-08T22:58:55Z",
+              "outcomes": [
+                { "name": "Over",  "description": "Gabby Williams", "price": -110, "point": 12.5 },
+                { "name": "Under", "description": "Gabby Williams", "price": -110, "point": 12.5 }
+              ]
+            }
+          ]
+        },
+        {
+          "key": "prizepicks",
+          "title": "PrizePicks",
+          "last_update": "2026-05-08T22:59:30Z",
+          "markets": [
+            {
+              "key": "player_points",
+              "last_update": "2026-05-08T22:59:30Z",
+              "outcomes": [
+                { "name": "Over",  "description": "Gabby Williams", "price": -137, "point": 12.5, "multiplier": null },
+                { "name": "Under", "description": "Gabby Williams", "price": -137, "point": 12.5, "multiplier": null }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

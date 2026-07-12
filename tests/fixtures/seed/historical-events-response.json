@@ -1,0 +1,30 @@
+{
+  "provenance": {
+    "kind": "synthetic",
+    "authority_sources": [
+      "Odds sub-spec §14.11 (historical events endpoint envelope)",
+      "Odds sub-spec §5 (event universe shape mirrored)"
+    ],
+    "notes": "Six synthetic events at a specific snapshot boundary. Six IDs are opaque provider-token look-alikes."
+  },
+  "http_status": 200,
+  "headers": {
+    "content-type": "application/json",
+    "x-requests-last": 1,
+    "x-requests-remaining": 999,
+    "x-requests-used": 1
+  },
+  "response_body": {
+    "timestamp": "2026-05-08T22:55:00Z",
+    "previous_timestamp": "2026-05-08T22:45:00Z",
+    "next_timestamp": "2026-05-08T23:05:00Z",
+    "data": [
+      { "id": "hs01_gsval_at_connsun",        "sport_key": "basketball_wnba", "sport_title": "WNBA", "commence_time": "2026-05-08T23:00:00Z", "home_team": "Connecticut Sun",       "away_team": "Golden State Valkyries" },
+      { "id": "hs02_dalwings_at_toron_tempo", "sport_key": "basketball_wnba", "sport_title": "WNBA", "commence_time": "2026-05-08T23:00:00Z", "home_team": "Toronto Tempo",         "away_team": "Dallas Wings" },
+      { "id": "hs03_chisky_at_la_sparks",     "sport_key": "basketball_wnba", "sport_title": "WNBA", "commence_time": "2026-05-09T02:10:00Z", "home_team": "Los Angeles Sparks",    "away_team": "Chicago Sky" },
+      { "id": "hs04_nyl_at_mnlynx",           "sport_key": "basketball_wnba", "sport_title": "WNBA", "commence_time": "2026-05-09T17:00:00Z", "home_team": "Minnesota Lynx",        "away_team": "New York Liberty" },
+      { "id": "hs05_por_fire_at_atl_dream",   "sport_key": "basketball_wnba", "sport_title": "WNBA", "commence_time": "2026-05-09T20:00:00Z", "home_team": "Atlanta Dream",         "away_team": "Portland Fire" },
+      { "id": "hs06_phx_at_lv_aces",          "sport_key": "basketball_wnba", "sport_title": "WNBA", "commence_time": "2026-05-09T22:00:00Z", "home_team": "Las Vegas Aces",        "away_team": "Phoenix Mercury" }
+    ]
+  }
+}

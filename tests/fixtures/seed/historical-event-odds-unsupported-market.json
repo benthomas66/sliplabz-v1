@@ -1,0 +1,33 @@
+{
+  "provenance": {
+    "kind": "synthetic",
+    "authority_sources": [
+      "Odds sub-spec §2 (V1 markets locked to points, rebounds, assists, made threes)",
+      "A1 §4.1 (four launch markets locked)"
+    ],
+    "notes": "Provider responded with player_steals for a DraftKings market. seed pipeline MUST filter it (unlaunched_market_key exclusion)."
+  },
+  "requested_close_boundary_utc": "2026-05-08T23:00:00Z",
+  "response_body": {
+    "timestamp": "2026-05-08T23:00:00Z",
+    "data": {
+      "id": "hs01_gsval_at_connsun",
+      "sport_key": "basketball_wnba",
+      "bookmakers": [
+        {
+          "key": "draftkings", "title": "DraftKings",
+          "markets": [
+            { "key": "player_steals", "last_update": "2026-05-08T22:59:00Z", "outcomes": [
+              { "name": "Over",  "description": "Gabby Williams", "price": -115, "point": 1.5 },
+              { "name": "Under", "description": "Gabby Williams", "price": -105, "point": 1.5 }
+            ] },
+            { "key": "player_points", "last_update": "2026-05-08T22:59:00Z", "outcomes": [
+              { "name": "Over",  "description": "Gabby Williams", "price": -115, "point": 12.5 },
+              { "name": "Under", "description": "Gabby Williams", "price": -105, "point": 12.5 }
+            ] }
+          ]
+        }
+      ]
+    }
+  }
+}

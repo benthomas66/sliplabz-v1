@@ -1,0 +1,41 @@
+{
+  "provenance": {
+    "kind": "synthetic",
+    "authority_sources": [
+      "Complete spec §7.10.2 rule 3 (multiple sportsbooks → select unique modal)",
+      "Odds sub-spec §18.4"
+    ],
+    "notes": "Three sportsbooks: DraftKings + FanDuel at 12.5, BetMGM at 13.5. Canonical selection must return unique_modal at 12.5."
+  },
+  "requested_close_boundary_utc": "2026-05-08T23:00:00Z",
+  "response_body": {
+    "timestamp": "2026-05-08T23:00:00Z",
+    "data": {
+      "id": "hs01_gsval_at_connsun",
+      "sport_key": "basketball_wnba",
+      "bookmakers": [
+        {
+          "key": "draftkings", "title": "DraftKings",
+          "markets": [ { "key": "player_points", "last_update": "2026-05-08T22:59:00Z", "outcomes": [
+            { "name": "Over",  "description": "Gabby Williams", "price": -115, "point": 12.5 },
+            { "name": "Under", "description": "Gabby Williams", "price": -105, "point": 12.5 }
+          ] } ]
+        },
+        {
+          "key": "fanduel", "title": "FanDuel",
+          "markets": [ { "key": "player_points", "last_update": "2026-05-08T22:59:00Z", "outcomes": [
+            { "name": "Over",  "description": "Gabby Williams", "price": -110, "point": 12.5 },
+            { "name": "Under", "description": "Gabby Williams", "price": -110, "point": 12.5 }
+          ] } ]
+        },
+        {
+          "key": "betmgm", "title": "BetMGM",
+          "markets": [ { "key": "player_points", "last_update": "2026-05-08T22:59:00Z", "outcomes": [
+            { "name": "Over",  "description": "Gabby Williams", "price": -120, "point": 13.5 },
+            { "name": "Under", "description": "Gabby Williams", "price": 100, "point": 13.5 }
+          ] } ]
+        }
+      ]
+    }
+  }
+}

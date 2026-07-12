@@ -1,0 +1,41 @@
+{
+  "provenance": {
+    "kind": "synthetic",
+    "authority_sources": [
+      "Odds sub-spec §14.11.1 rule 6 (≤10-minute snapshot before boundary → eligible)"
+    ],
+    "notes": "timestamp is 9 minutes before boundary — must classify as eligible."
+  },
+  "requested_close_boundary_utc": "2026-05-08T23:00:00Z",
+  "http_status": 200,
+  "headers": { "content-type": "application/json", "x-requests-last": 40 },
+  "response_body": {
+    "timestamp": "2026-05-08T22:51:00Z",
+    "previous_timestamp": "2026-05-08T22:41:00Z",
+    "next_timestamp": "2026-05-08T23:01:00Z",
+    "data": {
+      "id": "hs02_dalwings_at_toron_tempo",
+      "sport_key": "basketball_wnba",
+      "commence_time": "2026-05-08T23:00:00Z",
+      "home_team": "Toronto Tempo",
+      "away_team": "Dallas Wings",
+      "bookmakers": [
+        {
+          "key": "draftkings",
+          "title": "DraftKings",
+          "last_update": "2026-05-08T22:50:40Z",
+          "markets": [
+            {
+              "key": "player_points",
+              "last_update": "2026-05-08T22:50:40Z",
+              "outcomes": [
+                { "name": "Over",  "description": "Kayla Thornton", "price": -115, "point": 9.5 },
+                { "name": "Under", "description": "Kayla Thornton", "price": -105, "point": 9.5 }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

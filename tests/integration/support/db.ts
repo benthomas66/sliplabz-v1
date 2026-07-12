@@ -64,6 +64,8 @@ export async function openTestDb(): Promise<TestDbHandle> {
  */
 export async function truncateAllV14Tables(pool: SliplabzPool): Promise<void> {
   const tables = [
+    'seed_slice_watermarks',
+    'seed_run_records',
     'real_line_windows',
     'historical_line_results',
     'canonical_closing_points',

@@ -533,4 +533,65 @@ describe('supabase migrations — shape lint', () => {
     const s = read('20260711140009_current_market_rows.sql');
     assert.match(s, /CHECK\s*\(\s*provenance\s*=\s*'self_observed'\s*\)/i);
   });
+
+  // -------------------------------------------------------------------------
+  // V1-4b additions
+  // -------------------------------------------------------------------------
+
+  it('V1-4b: additive migration expands historical_line_results provenance CHECK without editing the V1-4 file', () => {
+    const v14b = read(
+      '20260711150000_historical_line_results_allow_backfilled_provenance.sql'
+    );
+    assert.match(
+      v14b,
+      /ADD\s+CONSTRAINT\s+historical_line_results_provenance_check/i
+    );
+    assert.match(
+      v14b,
+      /CHECK\s*\(\s*provenance\s+IN\s*\(\s*'self_observed'\s*,\s*'backfilled_historical'\s*\)\s*\)/i
+    );
+    // The DO block that finds and drops the anonymous inline CHECK.
+    assert.match(v14b, /DO\s+\$\$/);
+    assert.match(v14b, /pg_get_constraintdef/i);
+    // V1-4 file NOT touched: still declares the self_observed-only CHECK.
+    const v14 = read('20260711140007_historical_line_results.sql');
+    assert.match(v14, /CHECK\s*\(\s*provenance\s*=\s*'self_observed'\s*\)/i);
+    // Governor flag documented at the top of the V1-4b migration.
+    assert.match(v14b, /GOVERNOR FLAG/i);
+    assert.match(v14b, /CURRENT_ONLY_WHERE_CLAUSE/i);
+  });
+
+  it('V1-4b: seed_run_records enforces (running xor completed_at) and CHECKs completion_state enum', () => {
+    const s = read('20260711150001_seed_run_records.sql');
+    assert.match(
+      s,
+      /completion_state\s*=\s*'running'\s+AND\s+completed_at\s+IS\s+NULL/i
+    );
+    assert.match(
+      s,
+      /completion_state\s*<>\s*'running'\s+AND\s+completed_at\s+IS\s+NOT\s+NULL/i
+    );
+    assert.match(s, /credits_observed_total\s+integer\s+NOT NULL\s+DEFAULT\s+0/i);
+    assert.match(s, /'aborted_credit_budget'/i);
+  });
+
+  it('V1-4b: seed_slice_watermarks PK is (slate_date, market_key, bookmaker_key) and completed_at pairs with run_id + terminal state', () => {
+    const s = read('20260711150002_seed_slice_watermarks.sql');
+    assert.match(
+      s,
+      /PRIMARY\s+KEY\s*\(\s*slate_date\s*,\s*market_key\s*,\s*bookmaker_key\s*\)/i
+    );
+    assert.match(
+      s,
+      /completed_at\s+IS\s+NULL\s+AND\s+completed_by_run_id\s+IS\s+NULL/i
+    );
+    assert.match(
+      s,
+      /completed_at\s+IS\s+NOT\s+NULL\s+AND\s+completed_by_run_id\s+IS\s+NOT\s+NULL/i
+    );
+    assert.match(
+      s,
+      /slice_coverage_state\s+IN\s*\(\s*'complete'\s*,\s*'no_coverage_available'\s*\)/i
+    );
+  });
 });
