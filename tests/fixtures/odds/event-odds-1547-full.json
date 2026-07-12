@@ -1,0 +1,132 @@
+{
+  "provenance": {
+    "kind": "mixed",
+    "authority_sources": [
+      "Odds sub-spec §5 (event 1547b39904db439304af0dfdacaa469d verbatim)",
+      "Odds sub-spec §10.3 (event coverage summary: 7 books, 9 players, 5 duplicate groups, 4 credits)",
+      "Odds sub-spec §10.8 (BetRivers player_threes duplicate group)",
+      "Odds sub-spec §10.12 (source classification: 8 sportsbook keys + PrizePicks/Underdog)"
+    ],
+    "notes": "Event ID and matchup verbatim. Player and outcome content is compact (5 players instead of 9; 5 duplicate groups condensed to one BetRivers group demonstrated at raw_row_index 8/9 for player_threes 'Gabby Williams' at 1.5). Every synthetic row carries _synthetic: true; audit-attested rows carry _audit_source."
+  },
+  "retrieved_at": "2026-07-10T21:34:34Z",
+  "http_status": 200,
+  "headers": {
+    "content-type": "application/json",
+    "x-requests-used": 40719,
+    "x-requests-remaining": 40711,
+    "x-requests-last": 4
+  },
+  "response": {
+    "id": "1547b39904db439304af0dfdacaa469d",
+    "sport_key": "basketball_wnba",
+    "sport_title": "WNBA",
+    "commence_time": "2026-07-10T23:40:00Z",
+    "home_team": "Connecticut Sun",
+    "away_team": "Golden State Valkyries",
+    "bookmakers": [
+      {
+        "key": "draftkings",
+        "title": "DraftKings",
+        "last_update": "2026-07-10T21:34:00Z",
+        "markets": [
+          {
+            "key": "player_points",
+            "last_update": "2026-07-10T21:34:00Z",
+            "outcomes": [
+              { "name": "Over",  "description": "Gabby Williams", "price": -115, "point": 12.5, "_synthetic": true },
+              { "name": "Under", "description": "Gabby Williams", "price": -105, "point": 12.5, "_synthetic": true },
+              { "name": "Over",  "description": "Tina Charles",   "price": -110, "point": 15.5, "_synthetic": true },
+              { "name": "Under", "description": "Tina Charles",   "price": -110, "point": 15.5, "_synthetic": true }
+            ]
+          },
+          {
+            "key": "player_rebounds",
+            "last_update": "2026-07-10T21:34:00Z",
+            "outcomes": [
+              { "name": "Over",  "description": "Tina Charles",   "price": -120, "point": 8.5, "_synthetic": true },
+              { "name": "Under", "description": "Tina Charles",   "price": 100, "point": 8.5, "_synthetic": true }
+            ]
+          }
+        ]
+      },
+      {
+        "key": "fanduel",
+        "title": "FanDuel",
+        "last_update": "2026-07-10T21:33:30Z",
+        "markets": [
+          {
+            "key": "player_assists",
+            "last_update": "2026-07-10T21:33:30Z",
+            "outcomes": [
+              { "name": "Over",  "description": "Gabby Williams", "price": -125, "point": 3.5, "_synthetic": true },
+              { "name": "Under", "description": "Gabby Williams", "price": 105, "point": 3.5, "_synthetic": true }
+            ]
+          }
+        ]
+      },
+      {
+        "key": "betrivers",
+        "title": "BetRivers",
+        "last_update": "2026-07-10T21:33:00Z",
+        "markets": [
+          {
+            "key": "player_threes",
+            "last_update": "2026-07-10T21:33:00Z",
+            "outcomes": [
+              { "name": "Over",  "description": "Gabby Williams", "price": 115, "point": 1.5, "_audit_source": "Odds §10.8 BetRivers duplicate group" },
+              { "name": "Over",  "description": "Gabby Williams", "price": 115, "point": 1.5, "_audit_source": "Odds §10.8 BetRivers duplicate group (exact duplicate)" },
+              { "name": "Under", "description": "Gabby Williams", "price": -145, "point": 1.5, "_audit_source": "Odds §10.8 BetRivers duplicate group" },
+              { "name": "Under", "description": "Gabby Williams", "price": -145, "point": 1.5, "_audit_source": "Odds §10.8 BetRivers duplicate group (exact duplicate)" }
+            ]
+          }
+        ]
+      },
+      {
+        "key": "hardrockbet",
+        "title": "Hard Rock Bet",
+        "last_update": "2026-07-10T21:32:15Z",
+        "markets": [
+          {
+            "key": "player_points",
+            "last_update": "2026-07-10T21:32:15Z",
+            "outcomes": [
+              { "name": "Over",  "description": "Kayla Thornton", "price": -110, "point": 9.5, "_synthetic": true },
+              { "name": "Under", "description": "Kayla Thornton", "price": -110, "point": 9.5, "_synthetic": true }
+            ]
+          }
+        ]
+      },
+      {
+        "key": "espnbet",
+        "title": "theScore Bet",
+        "last_update": "2026-07-10T21:33:45Z",
+        "markets": [
+          {
+            "key": "player_points",
+            "last_update": "2026-07-10T21:33:45Z",
+            "outcomes": [
+              { "name": "Over",  "description": "Gabby Williams", "price": -115, "point": 12.5, "_synthetic": true },
+              { "name": "Under", "description": "Gabby Williams", "price": -105, "point": 12.5, "_synthetic": true }
+            ]
+          }
+        ]
+      },
+      {
+        "key": "williamhill_us",
+        "title": "Caesars",
+        "last_update": "2026-07-10T21:33:00Z",
+        "markets": [
+          {
+            "key": "player_rebounds",
+            "last_update": "2026-07-10T21:33:00Z",
+            "outcomes": [
+              { "name": "Over",  "description": "Tina Charles",   "price": -115, "point": 8.5, "_synthetic": true },
+              { "name": "Under", "description": "Tina Charles",   "price": -105, "point": 8.5, "_synthetic": true }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

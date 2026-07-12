@@ -183,3 +183,120 @@ export const INVALIDATION_REASONS = [
   'availability_state_change',
 ] as const;
 export type InvalidationReason = (typeof INVALIDATION_REASONS)[number];
+
+// -- V1-3 Odds API ingestion enums (mirror supabase/migrations/20260711130000_oddsapi_enums.sql) --
+
+export const ODDSAPI_REQUEST_KINDS = [
+  'event_discovery',
+  'current_poll',
+  'historical_query',
+] as const;
+export type OddsapiRequestKind = (typeof ODDSAPI_REQUEST_KINDS)[number];
+
+export const ODDSAPI_PROVENANCES = ['self_observed', 'backfilled_historical'] as const;
+export type OddsapiProvenance = (typeof ODDSAPI_PROVENANCES)[number];
+
+export const ODDSAPI_RUN_STATES = [
+  'running',
+  'complete',
+  'partial',
+  'failed_transport',
+  'failed_authentication_or_access',
+  'failed_forbidden_or_subscription',
+  'failed_not_found',
+  'failed_rate_limited',
+  'failed_invalid_request',
+  'failed_schema_drift',
+  'successful_empty',
+  'failed_parse',
+] as const;
+export type OddsapiRunState = (typeof ODDSAPI_RUN_STATES)[number];
+
+export const ODDSAPI_ENDPOINTS = [
+  'events',
+  'event_odds',
+  'event_markets',
+  'historical_events',
+  'historical_event_odds',
+] as const;
+export type OddsapiEndpoint = (typeof ODDSAPI_ENDPOINTS)[number];
+
+export const SOURCE_CLASSES = ['sportsbook', 'dfs_pickem', 'unknown'] as const;
+export type SourceClass = (typeof SOURCE_CLASSES)[number];
+
+export const BOOKMAKER_ALLOWLIST_STATUSES = [
+  'active',
+  'suspended',
+  'not_allowlisted',
+] as const;
+export type BookmakerAllowlistStatus =
+  (typeof BOOKMAKER_ALLOWLIST_STATUSES)[number];
+
+export const OUTCOME_SIDES = ['over', 'under'] as const;
+export type OutcomeSide = (typeof OUTCOME_SIDES)[number];
+
+export const OFFERING_STATES = [
+  'two_sided_complete',
+  'over_only',
+  'under_only',
+  'multi_line',
+  'duplicate_contaminated',
+  'conflicting',
+  'unresolved',
+] as const;
+export type OfferingState = (typeof OFFERING_STATES)[number];
+
+export const FRESHNESS_STATES = [
+  'fresh',
+  'aging',
+  'stale',
+  'unavailable',
+  'failed_latest_poll',
+] as const;
+export type FreshnessState = (typeof FRESHNESS_STATES)[number];
+
+export const SNAPSHOT_SCHEMA_STATES = [
+  'valid',
+  'valid_empty',
+  'schema_drift_quarantined',
+  'unresolved',
+] as const;
+export type SnapshotSchemaState = (typeof SNAPSHOT_SCHEMA_STATES)[number];
+
+export const DFS_PROMOTION_TYPES = ['standard', 'goblin', 'demon', 'unknown'] as const;
+export type DfsPromotionType = (typeof DFS_PROMOTION_TYPES)[number];
+
+export const PRICE_SEMANTICS = [
+  'sportsbook_american',
+  'provider_synthetic_or_display_price',
+] as const;
+export type PriceSemantic = (typeof PRICE_SEMANTICS)[number];
+
+export const OFFERING_CONFLICT_REASONS = [
+  'conflicting_prices_same_key',
+  'conflicting_points_same_key',
+  'materially_different_last_update',
+  'missing_side_semantics',
+  'missing_point',
+  'missing_player_description',
+  'missing_price',
+  'unresolved',
+] as const;
+export type OfferingConflictReason = (typeof OFFERING_CONFLICT_REASONS)[number];
+
+export const EVENT_PRESENCE_STATES = [
+  'currently_returned',
+  'single_omission',
+  'confirmed_removed',
+  'source_unavailable',
+  'commenced_or_in_play',
+] as const;
+export type EventPresenceState = (typeof EVENT_PRESENCE_STATES)[number];
+
+export const QUOTA_DELTA_FLAGS = [
+  'exact_match',
+  'observed_lower_than_forecast',
+  'observed_higher_than_forecast',
+  'observed_missing',
+] as const;
+export type QuotaDeltaFlag = (typeof QUOTA_DELTA_FLAGS)[number];

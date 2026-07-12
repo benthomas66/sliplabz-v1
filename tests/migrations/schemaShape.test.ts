@@ -287,4 +287,118 @@ describe('supabase migrations — shape lint', () => {
       /completed_at\s+IS\s+NOT\s+NULL\s+AND\s+completed_by_run_id\s+IS\s+NOT\s+NULL/i
     );
   });
+
+  // -------------------------------------------------------------------------
+  // V1-3 additions
+  // -------------------------------------------------------------------------
+
+  it('V1-3: all V1-3 enum types declared in the V1-3 enums migration', () => {
+    const oddsEnums = read('20260711130000_oddsapi_enums.sql');
+    const required = [
+      'CREATE TYPE oddsapi_request_kind',
+      'CREATE TYPE oddsapi_provenance',
+      'CREATE TYPE oddsapi_run_state',
+      'CREATE TYPE oddsapi_endpoint',
+      'CREATE TYPE source_class',
+      'CREATE TYPE bookmaker_allowlist_status',
+      'CREATE TYPE outcome_side',
+      'CREATE TYPE offering_state',
+      'CREATE TYPE freshness_state',
+      'CREATE TYPE snapshot_schema_state',
+      'CREATE TYPE dfs_promotion_type',
+      'CREATE TYPE price_semantic',
+      'CREATE TYPE offering_conflict_reason',
+      'CREATE TYPE event_presence_state',
+      'CREATE TYPE quota_delta_flag',
+    ];
+    for (const stanza of required) {
+      assert.ok(oddsEnums.includes(stanza), `missing: ${stanza}`);
+    }
+  });
+
+  it('V1-3: bookmaker_registry PK provider_key + source_class enum column + approved_by NOT NULL', () => {
+    const s = read('20260711130001_bookmaker_registry.sql');
+    assert.match(s, /provider_key\s+text\s+PRIMARY KEY/i);
+    assert.match(s, /source_class\s+source_class\s+NOT NULL/i);
+    assert.match(s, /approved_by\s+text\s+NOT NULL/i);
+  });
+
+  it('V1-3: market_registry has is_launch_market with default false', () => {
+    const s = read('20260711130002_market_registry.sql');
+    assert.match(s, /is_launch_market\s+boolean\s+NOT NULL\s+DEFAULT\s+false/i);
+  });
+
+  it('V1-3: oddsapi_ingestion_runs enforces (running xor completed_at)', () => {
+    const s = read('20260711130003_oddsapi_ingestion_runs.sql');
+    assert.match(
+      s,
+      /result_state\s*=\s*'running'\s+AND\s+completed_at\s+IS\s+NULL/i
+    );
+    assert.match(
+      s,
+      /result_state\s*<>\s*'running'\s+AND\s+completed_at\s+IS\s+NOT\s+NULL/i
+    );
+  });
+
+  it('V1-3: oddsapi_raw_responses has no `updated_at` — immutable in intent', () => {
+    const s = read('20260711130004_oddsapi_raw_responses.sql');
+    // Strip -- line comments first so descriptive text does not trip.
+    const stripped = s
+      .split('\n')
+      .map((line) => line.replace(/--.*$/, ''))
+      .join('\n');
+    assert.doesNotMatch(stripped, /updated_at\s+timestamptz/i);
+  });
+
+  it('V1-3: market_snapshots UNIQUE (run_id, event_id, bookmaker_key, market_key)', () => {
+    const s = read('20260711130006_market_snapshots.sql');
+    assert.match(
+      s,
+      /UNIQUE\s*\(\s*oddsapi_ingestion_run_id\s*,\s*provider_event_id\s*,\s*bookmaker_key\s*,\s*market_key\s*\)/i
+    );
+  });
+
+  it('V1-3: market_snapshots restricts request_kind × provenance combinations', () => {
+    const s = read('20260711130006_market_snapshots.sql');
+    assert.match(
+      s,
+      /request_kind\s*=\s*'current_poll'\s+AND\s+provenance\s*=\s*'self_observed'/i
+    );
+    assert.match(
+      s,
+      /request_kind\s*<>\s*'historical_query'\s+OR\s+provenance\s*=\s*'backfilled_historical'/i
+    );
+  });
+
+  it('V1-3: market_offerings UNIQUE (snapshot_id, normalized_player_name, point, side)', () => {
+    const s = read('20260711130007_market_offerings.sql');
+    assert.match(
+      s,
+      /UNIQUE\s*\(\s*market_snapshot_id\s*,\s*normalized_player_name\s*,\s*point\s*,\s*side\s*\)/i
+    );
+  });
+
+  it('V1-3: market_offerings enforces duplicate_count >= 1 CHECK', () => {
+    const s = read('20260711130007_market_offerings.sql');
+    assert.match(s, /CHECK\s*\(\s*duplicate_count\s*>=\s*1\s*\)/i);
+  });
+
+  it('V1-3: market_offering_raw_rows disposition CHECK covers contributed/duplicate/quarantined', () => {
+    const s = read('20260711130008_market_offering_raw_rows.sql');
+    assert.match(
+      s,
+      /disposition\s+IN\s*\(\s*'contributed'\s*,\s*'duplicate'\s*,\s*'quarantined'\s*\)/i
+    );
+    assert.match(
+      s,
+      /UNIQUE\s*\(\s*market_snapshot_id\s*,\s*raw_row_index\s*\)/i
+    );
+  });
+
+  it('V1-3: oddsapi_quarantine reason CHECK includes schema_drift_http_200 and conflicting_outcomes', () => {
+    const s = read('20260711130009_oddsapi_quarantine.sql');
+    assert.match(s, /'schema_drift_http_200'/i);
+    assert.match(s, /'conflicting_outcomes'/i);
+    assert.match(s, /'invalid_market_response_422'/i);
+  });
 });

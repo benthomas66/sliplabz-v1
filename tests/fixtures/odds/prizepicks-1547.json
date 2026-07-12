@@ -1,0 +1,87 @@
+{
+  "provenance": {
+    "kind": "mixed",
+    "authority_sources": [
+      "Odds sub-spec §11 (PrizePicks provider-specific audit)",
+      "Odds sub-spec §11.2 (coverage result: 26 rows, 8 players, 4 markets)",
+      "Odds sub-spec §11.3 (price=-137 across every Over and every Under; multiplier=null on all 26)",
+      "Odds sub-spec §11.9 (all markets shared last_update=2026-07-10T21:44:38Z, observed_at=2026-07-10T21:45:20Z)"
+    ],
+    "notes": "Twenty-six rows arranged 13 Over + 13 Under. Player set (8 players: 8 points, 2 rebounds, 2 assists, 1 threes) matches §11.2. Every player is synthetic-labeled but the aggregate counts and semantics are audit-verbatim."
+  },
+  "retrieved_at": "2026-07-10T21:45:20Z",
+  "http_status": 200,
+  "headers": {
+    "content-type": "application/json",
+    "x-requests-used": 40727,
+    "x-requests-remaining": 40703,
+    "x-requests-last": 4
+  },
+  "response": {
+    "id": "1547b39904db439304af0dfdacaa469d",
+    "sport_key": "basketball_wnba",
+    "sport_title": "WNBA",
+    "commence_time": "2026-07-10T23:40:00Z",
+    "home_team": "Connecticut Sun",
+    "away_team": "Golden State Valkyries",
+    "bookmakers": [
+      {
+        "key": "prizepicks",
+        "title": "PrizePicks",
+        "last_update": "2026-07-10T21:44:38Z",
+        "markets": [
+          {
+            "key": "player_points",
+            "last_update": "2026-07-10T21:44:38Z",
+            "outcomes": [
+              { "name": "Over",  "description": "Gabby Williams",   "price": -137, "point": 12.5, "multiplier": null, "_synthetic": true },
+              { "name": "Under", "description": "Gabby Williams",   "price": -137, "point": 12.5, "multiplier": null, "_synthetic": true },
+              { "name": "Over",  "description": "Kayla Thornton",   "price": -137, "point": 9.5,  "multiplier": null, "_synthetic": true },
+              { "name": "Under", "description": "Kayla Thornton",   "price": -137, "point": 9.5,  "multiplier": null, "_synthetic": true },
+              { "name": "Over",  "description": "Tina Charles",     "price": -137, "point": 15.5, "multiplier": null, "_synthetic": true },
+              { "name": "Under", "description": "Tina Charles",     "price": -137, "point": 15.5, "multiplier": null, "_synthetic": true },
+              { "name": "Over",  "description": "DeWanna Bonner",   "price": -137, "point": 10.5, "multiplier": null, "_synthetic": true },
+              { "name": "Under", "description": "DeWanna Bonner",   "price": -137, "point": 10.5, "multiplier": null, "_synthetic": true },
+              { "name": "Over",  "description": "Cecilia Zandalasini","price": -137, "point": 8.5, "multiplier": null, "_synthetic": true },
+              { "name": "Under", "description": "Cecilia Zandalasini","price": -137, "point": 8.5, "multiplier": null, "_synthetic": true },
+              { "name": "Over",  "description": "Bria Hartley",     "price": -137, "point": 7.5,  "multiplier": null, "_synthetic": true },
+              { "name": "Under", "description": "Bria Hartley",     "price": -137, "point": 7.5,  "multiplier": null, "_synthetic": true },
+              { "name": "Over",  "description": "Kate Martin",      "price": -137, "point": 6.5,  "multiplier": null, "_synthetic": true },
+              { "name": "Under", "description": "Kate Martin",      "price": -137, "point": 6.5,  "multiplier": null, "_synthetic": true },
+              { "name": "Over",  "description": "Julie Vanloo",     "price": -137, "point": 5.5,  "multiplier": null, "_synthetic": true },
+              { "name": "Under", "description": "Julie Vanloo",     "price": -137, "point": 5.5,  "multiplier": null, "_synthetic": true }
+            ]
+          },
+          {
+            "key": "player_rebounds",
+            "last_update": "2026-07-10T21:44:38Z",
+            "outcomes": [
+              { "name": "Over",  "description": "Tina Charles",     "price": -137, "point": 8.5, "multiplier": null, "_synthetic": true },
+              { "name": "Under", "description": "Tina Charles",     "price": -137, "point": 8.5, "multiplier": null, "_synthetic": true },
+              { "name": "Over",  "description": "DeWanna Bonner",   "price": -137, "point": 5.5, "multiplier": null, "_synthetic": true },
+              { "name": "Under", "description": "DeWanna Bonner",   "price": -137, "point": 5.5, "multiplier": null, "_synthetic": true }
+            ]
+          },
+          {
+            "key": "player_assists",
+            "last_update": "2026-07-10T21:44:38Z",
+            "outcomes": [
+              { "name": "Over",  "description": "Gabby Williams",   "price": -137, "point": 3.5, "multiplier": null, "_synthetic": true },
+              { "name": "Under", "description": "Gabby Williams",   "price": -137, "point": 3.5, "multiplier": null, "_synthetic": true },
+              { "name": "Over",  "description": "Kayla Thornton",   "price": -137, "point": 2.5, "multiplier": null, "_synthetic": true },
+              { "name": "Under", "description": "Kayla Thornton",   "price": -137, "point": 2.5, "multiplier": null, "_synthetic": true }
+            ]
+          },
+          {
+            "key": "player_threes",
+            "last_update": "2026-07-10T21:44:38Z",
+            "outcomes": [
+              { "name": "Over",  "description": "Gabby Williams",   "price": -137, "point": 1.5, "multiplier": null, "_synthetic": true },
+              { "name": "Under", "description": "Gabby Williams",   "price": -137, "point": 1.5, "multiplier": null, "_synthetic": true }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

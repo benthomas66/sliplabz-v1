@@ -1,0 +1,16 @@
+{
+  "provenance": {
+    "kind": "synthetic",
+    "authority_sources": [
+      "Odds sub-spec §19.2 (freshness thresholds: fresh ≤10m, aging ≤30m, stale >30m)"
+    ],
+    "notes": "provider_last_update is 45 minutes before now — must classify as `stale`. Also includes a 5-minute case (`fresh`) and a 15-minute case (`aging`) for the freshness test."
+  },
+  "now": "2026-07-11T17:00:00Z",
+  "cases": [
+    { "provider_last_update": "2026-07-11T16:55:00Z", "expected_state": "fresh" },
+    { "provider_last_update": "2026-07-11T16:45:00Z", "expected_state": "aging" },
+    { "provider_last_update": "2026-07-11T16:15:00Z", "expected_state": "stale" },
+    { "provider_last_update": null,                    "expected_state": "unavailable" }
+  ]
+}

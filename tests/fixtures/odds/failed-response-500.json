@@ -1,0 +1,15 @@
+{
+  "provenance": {
+    "kind": "synthetic",
+    "authority_sources": [
+      "Odds sub-spec §19.3 (failure behavior; retain last valid snapshot)",
+      "Odds sub-spec §20 (5xx: retryable; retain last valid data)"
+    ],
+    "notes": "HTTP 500 with plain-text body. Distinct from a schema-valid empty response: the freshness/current path must NOT overwrite the last valid snapshot."
+  },
+  "http_status": 500,
+  "headers": {
+    "content-type": "text/plain; charset=utf-8"
+  },
+  "response_body_text": "Internal Server Error"
+}

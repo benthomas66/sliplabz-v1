@@ -1,0 +1,24 @@
+{
+  "provenance": {
+    "kind": "audit_derived",
+    "authority_sources": [
+      "Odds sub-spec §13.7 (invalid-market request returned HTTP 422, 0 credits, no quota consumed)"
+    ],
+    "notes": "422 body preserved verbatim in shape; the exact error message content is synthetic (the audit records structure and quota behavior, not the message text)."
+  },
+  "requested": {
+    "market_keys": ["player_bogus_market"]
+  },
+  "http_status": 422,
+  "headers": {
+    "content-type": "application/json",
+    "x-requests-used": 40660,
+    "x-requests-remaining": 40660,
+    "x-requests-last": 0
+  },
+  "response_body_text": "{\"error_code\": \"UNKNOWN_MARKET\", \"message\": \"Unknown market key: player_bogus_market\"}",
+  "response": {
+    "error_code": "UNKNOWN_MARKET",
+    "message": "Unknown market key: player_bogus_market"
+  }
+}

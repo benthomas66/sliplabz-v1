@@ -1,0 +1,18 @@
+{
+  "provenance": {
+    "kind": "synthetic",
+    "authority_sources": [
+      "Odds sub-spec §20 (schema drift: HTTP 200 with an invalid body — preserve raw body; quarantine; NO blind retry)",
+      "Complete spec §15.6 (unknown schema)"
+    ],
+    "notes": "Crafted HTTP 200 whose body's `bookmakers` field is a STRING instead of an array. The response classifier must return `failed_schema_drift` and the raw body must be preserved."
+  },
+  "http_status": 200,
+  "headers": {
+    "content-type": "application/json"
+  },
+  "response": {
+    "id": "1547b39904db439304af0dfdacaa469d",
+    "bookmakers": "this used to be an array"
+  }
+}

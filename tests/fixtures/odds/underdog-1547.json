@@ -1,0 +1,67 @@
+{
+  "provenance": {
+    "kind": "mixed",
+    "authority_sources": [
+      "Odds sub-spec §12 (Underdog provider-specific audit)",
+      "Odds sub-spec §12.2 (coverage: 11 rows, 5 players, 3 markets — assists absent)",
+      "Odds sub-spec §12.3 (all rows price=-137, multiplier=1.0; 6 Over + 5 Under)",
+      "Odds sub-spec §12.6 (one-sided offering: kayla thornton player_points 8.5 over only)",
+      "Odds sub-spec §12.10 (last_update=2026-07-10T21:44:42Z, observed_at=2026-07-10T21:45:20Z)"
+    ],
+    "notes": "Eleven rows arranged 6 Over + 5 Under. Player set matches §12.2 counts (4 points, 1 rebounds, 0 assists, 1 threes). Kayla Thornton player_points at 8.5 preserved as OVER-ONLY per §12.6."
+  },
+  "retrieved_at": "2026-07-10T21:45:20Z",
+  "http_status": 200,
+  "headers": {
+    "content-type": "application/json",
+    "x-requests-used": 40730,
+    "x-requests-remaining": 40700,
+    "x-requests-last": 3
+  },
+  "response": {
+    "id": "1547b39904db439304af0dfdacaa469d",
+    "sport_key": "basketball_wnba",
+    "sport_title": "WNBA",
+    "commence_time": "2026-07-10T23:40:00Z",
+    "home_team": "Connecticut Sun",
+    "away_team": "Golden State Valkyries",
+    "bookmakers": [
+      {
+        "key": "underdog",
+        "title": "Underdog",
+        "last_update": "2026-07-10T21:44:42Z",
+        "markets": [
+          {
+            "key": "player_points",
+            "last_update": "2026-07-10T21:44:42Z",
+            "outcomes": [
+              { "name": "Over",  "description": "Gabby Williams", "price": -137, "point": 12.5, "multiplier": 1.0, "_synthetic": true },
+              { "name": "Under", "description": "Gabby Williams", "price": -137, "point": 12.5, "multiplier": 1.0, "_synthetic": true },
+              { "name": "Over",  "description": "Kayla Thornton", "price": -137, "point": 8.5,  "multiplier": 1.0, "_audit_source": "Odds §12.6 one-sided offering" },
+              { "name": "Over",  "description": "Tina Charles",   "price": -137, "point": 15.5, "multiplier": 1.0, "_synthetic": true },
+              { "name": "Under", "description": "Tina Charles",   "price": -137, "point": 15.5, "multiplier": 1.0, "_synthetic": true },
+              { "name": "Over",  "description": "DeWanna Bonner", "price": -137, "point": 10.5, "multiplier": 1.0, "_synthetic": true },
+              { "name": "Under", "description": "DeWanna Bonner", "price": -137, "point": 10.5, "multiplier": 1.0, "_synthetic": true }
+            ]
+          },
+          {
+            "key": "player_rebounds",
+            "last_update": "2026-07-10T21:44:42Z",
+            "outcomes": [
+              { "name": "Over",  "description": "Tina Charles",   "price": -137, "point": 8.5, "multiplier": 1.0, "_synthetic": true },
+              { "name": "Under", "description": "Tina Charles",   "price": -137, "point": 8.5, "multiplier": 1.0, "_synthetic": true }
+            ]
+          },
+          {
+            "key": "player_threes",
+            "last_update": "2026-07-10T21:44:42Z",
+            "outcomes": [
+              { "name": "Over",  "description": "Gabby Williams", "price": -137, "point": 1.5, "multiplier": 1.0, "_synthetic": true },
+              { "name": "Under", "description": "Gabby Williams", "price": -137, "point": 1.5, "multiplier": 1.0, "_synthetic": true }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

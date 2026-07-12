@@ -1,0 +1,23 @@
+{
+  "provenance": {
+    "kind": "audit_derived",
+    "authority_sources": [
+      "Odds sub-spec §13.2 (audit test 1: four markets, 10 explicit bookmakers)",
+      "Odds sub-spec §13.3 (10-book request → 1 bookmaker-region equivalent → 4 credits)",
+      "Odds sub-spec §14.6 (up to 10 bookmaker keys = 1 region)"
+    ],
+    "notes": "Only the headers matter for the quota reconciliation tests; body is minimal."
+  },
+  "requested": {
+    "market_count": 4,
+    "bookmaker_count": 10
+  },
+  "http_status": 200,
+  "headers": {
+    "content-type": "application/json",
+    "x-requests-used": 40662,
+    "x-requests-remaining": 40658,
+    "x-requests-last": 4
+  },
+  "response": { "id": "1547b39904db439304af0dfdacaa469d", "bookmakers": [] }
+}

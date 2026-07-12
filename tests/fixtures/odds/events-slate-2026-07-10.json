@@ -1,0 +1,68 @@
+{
+  "provenance": {
+    "kind": "audit_derived",
+    "authority_sources": [
+      "Odds sub-spec §4 (WNBA events endpoint audit)",
+      "Odds sub-spec §5 (observed WNBA event universe: 6 events, 12 teams)"
+    ],
+    "notes": "Six event IDs, matchups, and commence times are verbatim from §5. sport_key and sport_title are the audit's `basketball_wnba` and `WNBA`."
+  },
+  "retrieved_at": "2026-07-10T21:26:52Z",
+  "http_status": 200,
+  "headers": {
+    "content-type": "application/json",
+    "x-requests-used": 59285,
+    "x-requests-remaining": 40715,
+    "x-requests-last": 0
+  },
+  "response": [
+    {
+      "id": "1547b39904db439304af0dfdacaa469d",
+      "sport_key": "basketball_wnba",
+      "sport_title": "WNBA",
+      "commence_time": "2026-07-10T23:40:00Z",
+      "home_team": "Connecticut Sun",
+      "away_team": "Golden State Valkyries"
+    },
+    {
+      "id": "7295f7e8db8d22124fdf261cda31a1f6",
+      "sport_key": "basketball_wnba",
+      "sport_title": "WNBA",
+      "commence_time": "2026-07-10T23:40:00Z",
+      "home_team": "Toronto Tempo",
+      "away_team": "Dallas Wings"
+    },
+    {
+      "id": "14c1ed8012d1c1a70778c1d1aa348e83",
+      "sport_key": "basketball_wnba",
+      "sport_title": "WNBA",
+      "commence_time": "2026-07-11T02:10:00Z",
+      "home_team": "Los Angeles Sparks",
+      "away_team": "Chicago Sky"
+    },
+    {
+      "id": "93c27f5318a98fdd2a9bfbc42269f134",
+      "sport_key": "basketball_wnba",
+      "sport_title": "WNBA",
+      "commence_time": "2026-07-11T17:00:00Z",
+      "home_team": "Minnesota Lynx",
+      "away_team": "New York Liberty"
+    },
+    {
+      "id": "9f2c4d943190edd1073d4cd6760fcf8c",
+      "sport_key": "basketball_wnba",
+      "sport_title": "WNBA",
+      "commence_time": "2026-07-11T20:00:00Z",
+      "home_team": "Atlanta Dream",
+      "away_team": "Portland Fire"
+    },
+    {
+      "id": "dbbae9c1944a4874fe492f9fe23d8f62",
+      "sport_key": "basketball_wnba",
+      "sport_title": "WNBA",
+      "commence_time": "2026-07-11T22:00:00Z",
+      "home_team": "Las Vegas Aces",
+      "away_team": "Phoenix Mercury"
+    }
+  ]
+}

@@ -1,0 +1,90 @@
+{
+  "provenance": {
+    "kind": "mixed",
+    "authority_sources": [
+      "Odds sub-spec §5 (event 93c27f5318a98fdd2a9bfbc42269f134)",
+      "Odds sub-spec §10.3 (Liberty @ Lynx: 5 books, 8 players, 0 duplicates, 4 credits)"
+    ],
+    "notes": "Sparser event demonstrating source sparsity per §10.6: three books return partial market coverage; one book returns zero markets; one market has zero coverage. Every player row is synthetic beyond the audit's team counts."
+  },
+  "retrieved_at": "2026-07-11T16:55:00Z",
+  "http_status": 200,
+  "headers": {
+    "content-type": "application/json",
+    "x-requests-used": 40723,
+    "x-requests-remaining": 40707,
+    "x-requests-last": 4
+  },
+  "response": {
+    "id": "93c27f5318a98fdd2a9bfbc42269f134",
+    "sport_key": "basketball_wnba",
+    "sport_title": "WNBA",
+    "commence_time": "2026-07-11T17:00:00Z",
+    "home_team": "Minnesota Lynx",
+    "away_team": "New York Liberty",
+    "bookmakers": [
+      {
+        "key": "draftkings",
+        "title": "DraftKings",
+        "last_update": "2026-07-11T16:52:00Z",
+        "markets": [
+          {
+            "key": "player_points",
+            "last_update": "2026-07-11T16:52:00Z",
+            "outcomes": [
+              { "name": "Over",  "description": "Sabrina Ionescu", "price": -110, "point": 18.5, "_synthetic": true },
+              { "name": "Under", "description": "Sabrina Ionescu", "price": -110, "point": 18.5, "_synthetic": true }
+            ]
+          }
+        ]
+      },
+      {
+        "key": "fanduel",
+        "title": "FanDuel",
+        "last_update": "2026-07-11T16:51:15Z",
+        "markets": [
+          {
+            "key": "player_points",
+            "last_update": "2026-07-11T16:51:15Z",
+            "outcomes": [
+              { "name": "Over",  "description": "Napheesa Collier", "price": -125, "point": 20.5, "_synthetic": true },
+              { "name": "Under", "description": "Napheesa Collier", "price": 105, "point": 20.5, "_synthetic": true }
+            ]
+          }
+        ]
+      },
+      {
+        "key": "betmgm",
+        "title": "BetMGM",
+        "last_update": "2026-07-11T16:50:00Z",
+        "markets": []
+      },
+      {
+        "key": "espnbet",
+        "title": "theScore Bet",
+        "last_update": "2026-07-11T16:53:00Z",
+        "markets": [
+          {
+            "key": "player_rebounds",
+            "last_update": "2026-07-11T16:53:00Z",
+            "outcomes": []
+          }
+        ]
+      },
+      {
+        "key": "hardrockbet",
+        "title": "Hard Rock Bet",
+        "last_update": "2026-07-11T16:52:30Z",
+        "markets": [
+          {
+            "key": "player_assists",
+            "last_update": "2026-07-11T16:52:30Z",
+            "outcomes": [
+              { "name": "Over",  "description": "Sabrina Ionescu", "price": -115, "point": 5.5, "_synthetic": true }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}
