@@ -300,3 +300,69 @@ export const QUOTA_DELTA_FLAGS = [
   'observed_missing',
 ] as const;
 export type QuotaDeltaFlag = (typeof QUOTA_DELTA_FLAGS)[number];
+
+// -- V1-4 lines enums (mirror supabase/migrations/20260711140001_lines_enums.sql) --
+
+export const CLOSE_BOUNDARY_SOURCES = [
+  'verified_actual_start',
+  'scheduled_with_grace',
+  'postponed_no_close',
+] as const;
+export type CloseBoundarySource = (typeof CLOSE_BOUNDARY_SOURCES)[number];
+
+export const CLOSE_CAPTURE_STATES = [
+  'eligible',
+  'close_capture_stale',
+  'no_snapshot',
+] as const;
+export type CloseCaptureState = (typeof CLOSE_CAPTURE_STATES)[number];
+
+export const CLOSING_SELECTION_METHODS = [
+  'single_book',
+  'unique_modal',
+  'tied_no_unique_mode',
+  'no_eligible_source',
+] as const;
+export type ClosingSelectionMethod = (typeof CLOSING_SELECTION_METHODS)[number];
+
+export const COVERAGE_LABELS = [
+  'complete',
+  'single_book',
+  'incomplete',
+  'unresolved_closing_consensus',
+  'no_closing_line',
+] as const;
+export type CoverageLabel = (typeof COVERAGE_LABELS)[number];
+
+export const MOVEMENT_TYPES = [
+  'point_changed',
+  'over_price_changed',
+  'under_price_changed',
+  'side_added',
+  'side_removed',
+  'point_added',
+  'point_removed',
+  'player_added',
+  'player_removed',
+  'market_added',
+  'market_removed',
+  'bookmaker_added',
+  'bookmaker_removed',
+  'duplicate_state_changed',
+  'provider_timestamp_changed',
+  'unchanged',
+] as const;
+export type MovementType = (typeof MOVEMENT_TYPES)[number];
+
+export const SOURCE_PRESENCE_STATES = [
+  'present',
+  'single_omission',
+  'confirmed_removed',
+] as const;
+export type SourcePresenceState = (typeof SOURCE_PRESENCE_STATES)[number];
+
+export const REAL_LINE_OUTCOMES = ['over', 'under', 'push'] as const;
+export type RealLineOutcome = (typeof REAL_LINE_OUTCOMES)[number];
+
+export const REAL_LINE_WINDOW_TYPES = ['L5', 'L10', 'L20', 'season'] as const;
+export type RealLineWindowType = (typeof REAL_LINE_WINDOW_TYPES)[number];

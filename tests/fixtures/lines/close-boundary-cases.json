@@ -1,0 +1,69 @@
+{
+  "provenance": {
+    "kind": "synthetic",
+    "authority_sources": [
+      "Complete spec §7.10 (close boundary three-branch rule)"
+    ],
+    "notes": "Six games covering every §7.10 branch, plus a delayed-start case and a governor case (actual_start_utc set but status=postponed → postponed_no_close wins)."
+  },
+  "cases": [
+    {
+      "case_name": "verified_actual_start",
+      "internal_game_id": "00000000-0000-0000-0000-00000000cb01",
+      "scheduled_start_utc": "2026-07-11T22:00:00Z",
+      "actual_start_utc": "2026-07-11T22:08:12Z",
+      "status": "final",
+      "expected_boundary_source": "verified_actual_start",
+      "expected_close_boundary_utc": "2026-07-11T22:08:12Z"
+    },
+    {
+      "case_name": "scheduled_with_grace",
+      "internal_game_id": "00000000-0000-0000-0000-00000000cb02",
+      "scheduled_start_utc": "2026-07-11T22:00:00Z",
+      "actual_start_utc": null,
+      "status": "scheduled",
+      "expected_boundary_source": "scheduled_with_grace",
+      "expected_close_boundary_utc": "2026-07-11T22:15:00Z",
+      "expected_grace_seconds": 900
+    },
+    {
+      "case_name": "postponed_no_close",
+      "internal_game_id": "00000000-0000-0000-0000-00000000cb03",
+      "scheduled_start_utc": "2026-07-11T22:00:00Z",
+      "actual_start_utc": null,
+      "status": "postponed",
+      "expected_boundary_source": "postponed_no_close",
+      "expected_close_boundary_utc": null
+    },
+    {
+      "case_name": "canceled_no_close",
+      "internal_game_id": "00000000-0000-0000-0000-00000000cb04",
+      "scheduled_start_utc": "2026-07-11T22:00:00Z",
+      "actual_start_utc": null,
+      "status": "canceled",
+      "expected_boundary_source": "postponed_no_close",
+      "expected_close_boundary_utc": null
+    },
+    {
+      "case_name": "delayed_start_via_scheduled_grace",
+      "internal_game_id": "00000000-0000-0000-0000-00000000cb05",
+      "scheduled_start_utc": "2026-07-11T22:00:00Z",
+      "actual_start_utc": null,
+      "status": "live",
+      "expected_boundary_source": "scheduled_with_grace",
+      "expected_close_boundary_utc": "2026-07-11T22:15:00Z",
+      "expected_grace_seconds": 900,
+      "_note": "Delayed starts NEVER copy scheduled into actual; they flow through scheduled_with_grace until actual_start_utc is observed."
+    },
+    {
+      "case_name": "postponed_with_stale_actual",
+      "internal_game_id": "00000000-0000-0000-0000-00000000cb06",
+      "scheduled_start_utc": "2026-07-11T22:00:00Z",
+      "actual_start_utc": "2026-07-11T22:03:00Z",
+      "status": "postponed",
+      "expected_boundary_source": "postponed_no_close",
+      "expected_close_boundary_utc": null,
+      "_note": "Governor case: an abandoned tip does NOT produce a close even if actual_start_utc was clerically set."
+    }
+  ]
+}

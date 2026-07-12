@@ -1,0 +1,18 @@
+{
+  "provenance": {
+    "kind": "synthetic",
+    "authority_sources": [
+      "Complete spec §7.12 (push is separate outcome)",
+      "Complete spec §11.5 historical_line_results"
+    ],
+    "notes": "Six per-game results covering over / under / push."
+  },
+  "cases": [
+    { "case_name": "clean_over",         "canonical_closing_point": 12.5, "player_stat_value": 18, "coverage_label": "complete",    "expected_outcome": "over",  "expected_margin": 5.5 },
+    { "case_name": "clean_under",        "canonical_closing_point": 12.5, "player_stat_value": 8,  "coverage_label": "complete",    "expected_outcome": "under", "expected_margin": -4.5 },
+    { "case_name": "push",               "canonical_closing_point": 12.0, "player_stat_value": 12, "coverage_label": "complete",    "expected_outcome": "push",  "expected_margin": 0 },
+    { "case_name": "single_book_over",   "canonical_closing_point": 15.5, "player_stat_value": 20, "coverage_label": "single_book", "expected_outcome": "over",  "expected_margin": 4.5 },
+    { "case_name": "boundary_over_half", "canonical_closing_point": 12.5, "player_stat_value": 13, "coverage_label": "complete",    "expected_outcome": "over",  "expected_margin": 0.5 },
+    { "case_name": "boundary_under_by_one", "canonical_closing_point": 12.5, "player_stat_value": 12, "coverage_label": "complete", "expected_outcome": "under", "expected_margin": -0.5 }
+  ]
+}

@@ -1,0 +1,44 @@
+{
+  "provenance": {
+    "kind": "synthetic",
+    "authority_sources": [
+      "Complete spec §7.13 / §14.3 (windows preserve actual n)",
+      "Complete spec §7.12 / §14.4 (push excluded from Over/Under percentages)",
+      "Complete spec §14.5 (streak stops at opposite or push or coverage gap)"
+    ],
+    "notes": "22 eligible real-line games for one player (reverse-chronological). Also includes an incomplete_L10 variant with only 7 games."
+  },
+  "player_reverse_chron_complete": [
+    { "game_date_utc": "2026-07-11T22:00:00Z", "canonical_closing_point": 12.5, "player_stat_value": 18, "outcome": "over",  "margin":  5.5, "coverage_label": "complete" },
+    { "game_date_utc": "2026-07-09T22:00:00Z", "canonical_closing_point": 12.5, "player_stat_value": 16, "outcome": "over",  "margin":  3.5, "coverage_label": "complete" },
+    { "game_date_utc": "2026-07-07T22:00:00Z", "canonical_closing_point": 12.5, "player_stat_value":  8, "outcome": "under", "margin": -4.5, "coverage_label": "complete" },
+    { "game_date_utc": "2026-07-05T22:00:00Z", "canonical_closing_point": 12.5, "player_stat_value": 12, "outcome": "under", "margin": -0.5, "coverage_label": "complete" },
+    { "game_date_utc": "2026-07-03T22:00:00Z", "canonical_closing_point": 13.5, "player_stat_value": 15, "outcome": "over",  "margin":  1.5, "coverage_label": "complete" },
+    { "game_date_utc": "2026-07-01T22:00:00Z", "canonical_closing_point": 12.5, "player_stat_value": 12, "outcome": "under", "margin": -0.5, "coverage_label": "complete" },
+    { "game_date_utc": "2026-06-29T22:00:00Z", "canonical_closing_point": 13.5, "player_stat_value": 20, "outcome": "over",  "margin":  6.5, "coverage_label": "complete" },
+    { "game_date_utc": "2026-06-27T22:00:00Z", "canonical_closing_point": 14.5, "player_stat_value": 14, "outcome": "under", "margin": -0.5, "coverage_label": "complete" },
+    { "game_date_utc": "2026-06-25T22:00:00Z", "canonical_closing_point": 12.0, "player_stat_value": 12, "outcome": "push",  "margin":  0,   "coverage_label": "complete" },
+    { "game_date_utc": "2026-06-23T22:00:00Z", "canonical_closing_point": 12.5, "player_stat_value": 15, "outcome": "over",  "margin":  2.5, "coverage_label": "complete" },
+    { "game_date_utc": "2026-06-21T22:00:00Z", "canonical_closing_point": 12.5, "player_stat_value": 10, "outcome": "under", "margin": -2.5, "coverage_label": "single_book" },
+    { "game_date_utc": "2026-06-19T22:00:00Z", "canonical_closing_point": 13.0, "player_stat_value": 18, "outcome": "over",  "margin":  5.0, "coverage_label": "complete" },
+    { "game_date_utc": "2026-06-17T22:00:00Z", "canonical_closing_point": 13.5, "player_stat_value": 12, "outcome": "under", "margin": -1.5, "coverage_label": "complete" },
+    { "game_date_utc": "2026-06-15T22:00:00Z", "canonical_closing_point": 12.5, "player_stat_value": 22, "outcome": "over",  "margin":  9.5, "coverage_label": "complete" },
+    { "game_date_utc": "2026-06-13T22:00:00Z", "canonical_closing_point": 12.5, "player_stat_value": 16, "outcome": "over",  "margin":  3.5, "coverage_label": "complete" },
+    { "game_date_utc": "2026-06-11T22:00:00Z", "canonical_closing_point": 12.5, "player_stat_value":  8, "outcome": "under", "margin": -4.5, "coverage_label": "complete" },
+    { "game_date_utc": "2026-06-09T22:00:00Z", "canonical_closing_point": 12.5, "player_stat_value": 13, "outcome": "over",  "margin":  0.5, "coverage_label": "complete" },
+    { "game_date_utc": "2026-06-07T22:00:00Z", "canonical_closing_point": 12.5, "player_stat_value": 12, "outcome": "under", "margin": -0.5, "coverage_label": "complete" },
+    { "game_date_utc": "2026-06-05T22:00:00Z", "canonical_closing_point": 12.5, "player_stat_value": 12, "outcome": "under", "margin": -0.5, "coverage_label": "complete" },
+    { "game_date_utc": "2026-06-03T22:00:00Z", "canonical_closing_point": 12.5, "player_stat_value": 20, "outcome": "over",  "margin":  7.5, "coverage_label": "complete" },
+    { "game_date_utc": "2026-06-01T22:00:00Z", "canonical_closing_point": 14.5, "player_stat_value": 15, "outcome": "over",  "margin":  0.5, "coverage_label": "complete" },
+    { "game_date_utc": "2026-05-30T22:00:00Z", "canonical_closing_point": 12.5, "player_stat_value": 11, "outcome": "under", "margin": -1.5, "coverage_label": "complete" }
+  ],
+  "player_reverse_chron_incomplete_l10": [
+    { "game_date_utc": "2026-07-11T22:00:00Z", "canonical_closing_point": 12.5, "player_stat_value": 18, "outcome": "over",  "margin":  5.5, "coverage_label": "complete" },
+    { "game_date_utc": "2026-07-09T22:00:00Z", "canonical_closing_point": 12.5, "player_stat_value": 16, "outcome": "over",  "margin":  3.5, "coverage_label": "complete" },
+    { "game_date_utc": "2026-07-07T22:00:00Z", "canonical_closing_point": 12.5, "player_stat_value":  8, "outcome": "under", "margin": -4.5, "coverage_label": "complete" },
+    { "game_date_utc": "2026-07-05T22:00:00Z", "canonical_closing_point": 12.5, "player_stat_value": 12, "outcome": "under", "margin": -0.5, "coverage_label": "complete" },
+    { "game_date_utc": "2026-07-03T22:00:00Z", "canonical_closing_point": 13.5, "player_stat_value": 15, "outcome": "over",  "margin":  1.5, "coverage_label": "complete" },
+    { "game_date_utc": "2026-07-01T22:00:00Z", "canonical_closing_point": 12.5, "player_stat_value": 12, "outcome": "push",  "margin":  0,   "coverage_label": "complete" },
+    { "game_date_utc": "2026-06-29T22:00:00Z", "canonical_closing_point": 13.5, "player_stat_value": 20, "outcome": "over",  "margin":  6.5, "coverage_label": "complete" }
+  ]
+}

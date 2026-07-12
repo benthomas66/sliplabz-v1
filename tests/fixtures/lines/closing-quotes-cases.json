@@ -1,0 +1,98 @@
+{
+  "provenance": {
+    "kind": "synthetic",
+    "authority_sources": [
+      "Complete spec §7.10.2 (canonical closing point selection)",
+      "Odds sub-spec §18.4 (canonical historical closing point method)",
+      "Odds sub-spec §18.1 (sportsbook eligibility)"
+    ],
+    "notes": "Six scenarios covering every branch of the canonical selection method."
+  },
+  "cases": [
+    {
+      "case_name": "single_book",
+      "quotes": [
+        { "bookmaker_key": "draftkings", "source_class": "sportsbook", "close_capture_state": "eligible", "closing_point": 12.5 }
+      ],
+      "expected": {
+        "selection_method": "single_book",
+        "canonical_closing_point": 12.5,
+        "total_eligible_sportsbook_count": 1,
+        "sportsbook_count_at_selected_point": 1,
+        "coverage_label": "single_book"
+      }
+    },
+    {
+      "case_name": "unique_modal",
+      "quotes": [
+        { "bookmaker_key": "draftkings",   "source_class": "sportsbook", "close_capture_state": "eligible", "closing_point": 12.5 },
+        { "bookmaker_key": "fanduel",      "source_class": "sportsbook", "close_capture_state": "eligible", "closing_point": 12.5 },
+        { "bookmaker_key": "betmgm",       "source_class": "sportsbook", "close_capture_state": "eligible", "closing_point": 13.5 }
+      ],
+      "expected": {
+        "selection_method": "unique_modal",
+        "canonical_closing_point": 12.5,
+        "total_eligible_sportsbook_count": 3,
+        "sportsbook_count_at_selected_point": 2,
+        "coverage_label": "complete"
+      }
+    },
+    {
+      "case_name": "tied_no_unique_mode_two_way",
+      "quotes": [
+        { "bookmaker_key": "draftkings",   "source_class": "sportsbook", "close_capture_state": "eligible", "closing_point": 12.5 },
+        { "bookmaker_key": "fanduel",      "source_class": "sportsbook", "close_capture_state": "eligible", "closing_point": 13.5 }
+      ],
+      "expected": {
+        "selection_method": "tied_no_unique_mode",
+        "canonical_closing_point": null,
+        "total_eligible_sportsbook_count": 2,
+        "sportsbook_count_at_selected_point": null,
+        "coverage_label": "unresolved_closing_consensus"
+      }
+    },
+    {
+      "case_name": "tied_no_unique_mode_three_way",
+      "quotes": [
+        { "bookmaker_key": "draftkings",  "source_class": "sportsbook", "close_capture_state": "eligible", "closing_point": 12.5 },
+        { "bookmaker_key": "fanduel",     "source_class": "sportsbook", "close_capture_state": "eligible", "closing_point": 13.5 },
+        { "bookmaker_key": "betmgm",      "source_class": "sportsbook", "close_capture_state": "eligible", "closing_point": 14.5 }
+      ],
+      "expected": {
+        "selection_method": "tied_no_unique_mode",
+        "canonical_closing_point": null,
+        "total_eligible_sportsbook_count": 3,
+        "sportsbook_count_at_selected_point": null,
+        "coverage_label": "unresolved_closing_consensus"
+      }
+    },
+    {
+      "case_name": "no_eligible_source_all_stale",
+      "quotes": [
+        { "bookmaker_key": "draftkings",  "source_class": "sportsbook", "close_capture_state": "close_capture_stale", "closing_point": null },
+        { "bookmaker_key": "fanduel",     "source_class": "sportsbook", "close_capture_state": "no_snapshot",         "closing_point": null }
+      ],
+      "expected": {
+        "selection_method": "no_eligible_source",
+        "canonical_closing_point": null,
+        "total_eligible_sportsbook_count": 0,
+        "sportsbook_count_at_selected_point": null,
+        "coverage_label": "no_closing_line"
+      }
+    },
+    {
+      "case_name": "dfs_only_must_return_no_eligible_source",
+      "quotes": [
+        { "bookmaker_key": "prizepicks",  "source_class": "dfs_pickem", "close_capture_state": "eligible", "closing_point": 12.5 },
+        { "bookmaker_key": "underdog",    "source_class": "dfs_pickem", "close_capture_state": "eligible", "closing_point": 12.5 }
+      ],
+      "expected": {
+        "selection_method": "no_eligible_source",
+        "canonical_closing_point": null,
+        "total_eligible_sportsbook_count": 0,
+        "sportsbook_count_at_selected_point": null,
+        "coverage_label": "no_closing_line"
+      }
+    }
+  ]
+}

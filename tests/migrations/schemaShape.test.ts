@@ -401,4 +401,136 @@ describe('supabase migrations — shape lint', () => {
     assert.match(s, /'conflicting_outcomes'/i);
     assert.match(s, /'invalid_market_response_422'/i);
   });
+
+  // -------------------------------------------------------------------------
+  // V1-4 additions
+  // -------------------------------------------------------------------------
+
+  it('V1-4: additive CHECK closes event_discovery -> self_observed gap without touching the V1-3 migration', () => {
+    const v14 = read(
+      '20260711140000_market_snapshots_check_event_discovery_provenance.sql'
+    );
+    assert.match(v14, /ADD\s+CONSTRAINT\s+market_snapshots_check_event_discovery_provenance/i);
+    assert.match(
+      v14,
+      /request_kind\s*<>\s*'event_discovery'\s+OR\s+provenance\s*=\s*'self_observed'/i
+    );
+    const v13 = read('20260711130006_market_snapshots.sql');
+    assert.doesNotMatch(v13, /market_snapshots_check_event_discovery_provenance/i);
+  });
+
+  it('V1-4: all V1-4 enum types declared in the V1-4 lines enums migration', () => {
+    const linesEnums = read('20260711140001_lines_enums.sql');
+    const required = [
+      'CREATE TYPE close_boundary_source',
+      'CREATE TYPE close_capture_state',
+      'CREATE TYPE closing_selection_method',
+      'CREATE TYPE coverage_label',
+      'CREATE TYPE movement_type',
+      'CREATE TYPE source_presence_state',
+      'CREATE TYPE real_line_outcome',
+      'CREATE TYPE real_line_window_type',
+    ];
+    for (const stanza of required) {
+      assert.ok(linesEnums.includes(stanza), `missing: ${stanza}`);
+    }
+  });
+
+  it('V1-4: close_boundary_evaluations enforces branch-specific column pairings', () => {
+    const s = read('20260711140002_close_boundary_evaluations.sql');
+    assert.match(
+      s,
+      /boundary_source\s*=\s*'postponed_no_close'\s+AND\s+close_boundary_utc\s+IS\s+NULL/i
+    );
+    assert.match(
+      s,
+      /boundary_source\s*=\s*'verified_actual_start'\s+AND\s+close_boundary_utc\s+IS\s+NOT\s+NULL/i
+    );
+    assert.match(
+      s,
+      /boundary_source\s*=\s*'scheduled_with_grace'\s+AND\s+close_boundary_utc\s+IS\s+NOT\s+NULL\s+AND\s+grace_seconds\s+IS\s+NOT\s+NULL/i
+    );
+  });
+
+  it('V1-4: observed_line_lifecycle enforces provenance=self_observed structurally', () => {
+    const s = read('20260711140003_observed_line_lifecycle.sql');
+    assert.match(s, /CHECK\s*\(\s*provenance\s*=\s*'self_observed'\s*\)/i);
+    assert.match(
+      s,
+      /CHECK\s*\(\s*consecutive_omission_count\s*>=\s*0\s+AND\s+consecutive_omission_count\s*<=\s*2\s*\)/i
+    );
+  });
+
+  it('V1-4 correction: observed_line_lifecycle has lifecycle_generation NOT NULL DEFAULT 1 with CHECK >= 1, included as UNIQUE final member', () => {
+    const s = read('20260711140003_observed_line_lifecycle.sql');
+    // Column declared with NOT NULL DEFAULT 1.
+    assert.match(
+      s,
+      /lifecycle_generation\s+integer\s+NOT NULL\s+DEFAULT\s+1/i
+    );
+    // CHECK enforces the minimum.
+    assert.match(s, /CHECK\s*\(\s*lifecycle_generation\s*>=\s*1\s*\)/i);
+    // UNIQUE constraint includes lifecycle_generation as the FINAL member.
+    assert.match(
+      s,
+      /UNIQUE\s*\(\s*internal_game_id\s*,\s*internal_player_id\s*,\s*market_key\s*,\s*bookmaker_key\s*,\s*side\s*,\s*point\s*,\s*lifecycle_generation\s*\)/i
+    );
+    // Header comment documents the generation semantics.
+    assert.match(s, /Lifecycle generation semantics/i);
+    assert.match(s, /generation \+ 1/);
+    assert.match(s, /prior generations never mutate/i);
+  });
+
+  it('V1-4: movement_events confidence CHECK covers high|low', () => {
+    const s = read('20260711140004_movement_events.sql');
+    assert.match(s, /CHECK\s*\(\s*confidence\s+IN\s*\(\s*'high'\s*,\s*'low'\s*\)\s*\)/i);
+  });
+
+  it('V1-4: source_closing_quotes UNIQUE (game, player, market, bookmaker) with branch-specific CHECK pairs', () => {
+    const s = read('20260711140005_source_closing_quotes.sql');
+    assert.match(
+      s,
+      /UNIQUE\s*\(\s*internal_game_id\s*,\s*internal_player_id\s*,\s*market_key\s*,\s*bookmaker_key\s*\)/i
+    );
+    assert.match(
+      s,
+      /close_capture_state\s*=\s*'eligible'\s+AND\s+closing_point\s+IS\s+NOT\s+NULL/i
+    );
+  });
+
+  it('V1-4: canonical_closing_points UNIQUE (game, player, market) with method-specific CHECK pairs', () => {
+    const s = read('20260711140006_canonical_closing_points.sql');
+    assert.match(
+      s,
+      /UNIQUE\s*\(\s*internal_game_id\s*,\s*internal_player_id\s*,\s*market_key\s*\)/i
+    );
+    assert.match(
+      s,
+      /selection_method\s*=\s*'single_book'\s+AND\s+canonical_closing_point\s+IS\s+NOT\s+NULL/i
+    );
+    assert.match(
+      s,
+      /selection_method\s*=\s*'tied_no_unique_mode'\s+AND\s+canonical_closing_point\s+IS\s+NULL/i
+    );
+  });
+
+  it('V1-4: historical_line_results push/margin CHECK enforces the outcome/margin invariant', () => {
+    const s = read('20260711140007_historical_line_results.sql');
+    assert.match(s, /outcome\s*=\s*'push'\s+AND\s+margin\s*=\s*0/i);
+    assert.match(s, /outcome\s*=\s*'over'\s+AND\s+margin\s*>\s*0/i);
+    assert.match(s, /outcome\s*=\s*'under'\s+AND\s+margin\s*<\s*0/i);
+  });
+
+  it('V1-4: real_line_windows enforces over_count + under_count + push_count = eligible_n', () => {
+    const s = read('20260711140008_real_line_windows.sql');
+    assert.match(
+      s,
+      /over_count\s*\+\s*under_count\s*\+\s*push_count\s*=\s*eligible_n/i
+    );
+  });
+
+  it('V1-4: current_market_rows structural CHECK requires provenance=self_observed', () => {
+    const s = read('20260711140009_current_market_rows.sql');
+    assert.match(s, /CHECK\s*\(\s*provenance\s*=\s*'self_observed'\s*\)/i);
+  });
 });
