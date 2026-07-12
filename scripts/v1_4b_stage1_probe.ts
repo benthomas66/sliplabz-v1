@@ -56,13 +56,12 @@ import { formatCoverageReportMarkdown } from '../src/seed/coverageReport.js';
 
 // --- Stage 1 governor scope ----------------------------------------------
 
-const CREDIT_BUDGET = 200;
-const MAX_EVENTS = 4;
+const CREDIT_BUDGET = 100;
+const MAX_EVENTS = 2;
+const MAX_EVENTS_PER_DATE = 1;
 
-// Three distinct past slate dates. Operator overrides via CLI in practice;
-// hard-coded defaults are three 2026 WNBA game dates in months well before
-// commit time (any date pre-launch works for the probe).
-const DEFAULT_SLATE_DATES = ['2026-05-08', '2026-06-15', '2026-07-01'];
+// Governor-authorized mini-probe: mid/late-season only. One event per date.
+const DEFAULT_SLATE_DATES = ['2026-06-15', '2026-07-01'];
 
 // Sportsbook-only per §14.11.1. DFS keys never enter historical seed calls.
 const BOOKMAKER_KEYS: ReadonlyArray<string> = V1_CONSENSUS_SPORTSBOOK_KEYS;
@@ -81,6 +80,7 @@ interface ProbeConfig {
   readonly bookmaker_keys: ReadonlyArray<string>;
   readonly credit_budget: number;
   readonly max_events: number;
+  readonly max_events_per_date: number;
 }
 
 async function main(): Promise<void> {
@@ -90,6 +90,7 @@ async function main(): Promise<void> {
     bookmaker_keys: BOOKMAKER_KEYS,
     credit_budget: CREDIT_BUDGET,
     max_events: MAX_EVENTS,
+    max_events_per_date: MAX_EVENTS_PER_DATE,
   };
 
   const api_key = process.env['ODDS_API_KEY'];
@@ -135,7 +136,7 @@ async function main(): Promise<void> {
     started_at,
     scope: {
       run_kind: 'stage1_probe',
-      label: 'Stage 1 bounded coverage probe',
+      label: 'Stage 1 mini-probe: mid/late-season coverage',
       credit_budget: cfg.credit_budget,
       requested_market_keys: cfg.market_keys,
       requested_bookmaker_keys: cfg.bookmaker_keys,
@@ -219,9 +220,12 @@ async function main(): Promise<void> {
       continue;
     }
 
-    // 2. Per-event odds — cap at cfg.max_events across ALL dates.
+    // 2. Per-event odds — cap at cfg.max_events across ALL dates AND
+    //    cap at cfg.max_events_per_date within this slate_date.
+    let events_probed_on_this_date = 0;
     for (const evt of valid.valid_events) {
       if (events_probed >= cfg.max_events) break outer;
+      if (events_probed_on_this_date >= cfg.max_events_per_date) break;
       const boundary_utc = evt.commence_time; // §7.10 verified boundary
       const forecast = forecastHistoricalEventOddsCost({
         requested_market_count: cfg.market_keys.length,
@@ -245,6 +249,7 @@ async function main(): Promise<void> {
         bookmaker_keys: cfg.bookmaker_keys,
       });
       events_probed += 1;
+      events_probed_on_this_date += 1;
       const observed_last =
         typeof odds.headers['x-requests-last'] === 'number'
           ? (odds.headers['x-requests-last'] as number)
