@@ -1,0 +1,47 @@
+{
+  "provenance": {
+    "kind": "audit_derived",
+    "authority_sources": [
+      "BALLDONTLIE sub-spec §12B.2 (33-row teams response)",
+      "BALLDONTLIE sub-spec §12B.3 (registry composition)",
+      "BALLDONTLIE sub-spec §12B.4 (classification taxonomy)",
+      "BALLDONTLIE sub-spec §12B.7 (expansion metadata: empty city + null conference for Fire id 31, Tempo id 30)"
+    ],
+    "notes": "Every row is derivable from the sub-spec's §12B.3 enumeration and §12B.4 taxonomy. Provider strings appear verbatim in the audit tables."
+  },
+  "teams": [
+    { "id": 1,  "conference": "Eastern",  "city": "Atlanta",    "name": "Dream",     "full_name": "Atlanta Dream",     "abbreviation": "ATL", "_classification": "current_franchise" },
+    { "id": 2,  "conference": "Eastern",  "city": "Chicago",    "name": "Sky",       "full_name": "Chicago Sky",       "abbreviation": "CHI", "_classification": "current_franchise" },
+    { "id": 3,  "conference": "Eastern",  "city": "Connecticut","name": "Sun",       "full_name": "Connecticut Sun",   "abbreviation": "CON", "_classification": "current_franchise" },
+    { "id": 4,  "conference": "Western",  "city": "Dallas",     "name": "Wings",     "full_name": "Dallas Wings",      "abbreviation": "DAL", "_classification": "current_franchise" },
+    { "id": 5,  "conference": "Western",  "city": "Golden State","name": "Valkyries","full_name": "Golden State Valkyries","abbreviation": "GS", "_classification": "current_franchise" },
+    { "id": 6,  "conference": "Eastern",  "city": "Indiana",    "name": "Fever",     "full_name": "Indiana Fever",     "abbreviation": "IND", "_classification": "current_franchise" },
+    { "id": 7,  "conference": "Western",  "city": "Las Vegas",  "name": "Aces",      "full_name": "Las Vegas Aces",    "abbreviation": "LV",  "_classification": "current_franchise" },
+    { "id": 8,  "conference": "Western",  "city": "Los Angeles","name": "Sparks",    "full_name": "Los Angeles Sparks","abbreviation": "LA",  "_classification": "current_franchise" },
+    { "id": 9,  "conference": "Western",  "city": "Minnesota",  "name": "Lynx",      "full_name": "Minnesota Lynx",    "abbreviation": "MIN", "_classification": "current_franchise" },
+    { "id": 10, "conference": "Eastern",  "city": "New York",   "name": "Liberty",   "full_name": "New York Liberty",  "abbreviation": "NY",  "_classification": "current_franchise" },
+    { "id": 11, "conference": "Western",  "city": "Phoenix",    "name": "Mercury",   "full_name": "Phoenix Mercury",   "abbreviation": "PHX", "_classification": "current_franchise" },
+    { "id": 12, "conference": "Western",  "city": "Seattle",    "name": "Storm",     "full_name": "Seattle Storm",     "abbreviation": "SEA", "_classification": "current_franchise" },
+    { "id": 13, "conference": "Eastern",  "city": "Washington", "name": "Mystics",   "full_name": "Washington Mystics","abbreviation": "WSH", "_classification": "current_franchise" },
+    { "id": 30, "conference": null,       "city": "",           "name": "Tempo",     "full_name": "Tempo",             "abbreviation": "TOR", "_classification": "current_franchise" },
+    { "id": 31, "conference": null,       "city": "",           "name": "Fire",      "full_name": "Fire",              "abbreviation": "POR", "_classification": "current_franchise" },
+    { "id": 14, "conference": "Western",  "city": "Sacramento", "name": "Monarchs",  "full_name": "Sacramento Monarchs","abbreviation": "SAC","_classification": "historical_franchise" },
+    { "id": 15, "conference": "Western",  "city": "Houston",    "name": "Comets",    "full_name": "Houston Comets",    "abbreviation": "HOU", "_classification": "historical_franchise" },
+    { "id": 16, "conference": null,       "city": "",           "name": "East",      "full_name": "East",              "abbreviation": "EST", "_classification": "all_star_or_exhibition" },
+    { "id": 17, "conference": null,       "city": "",           "name": "West",      "full_name": "West",              "abbreviation": "WST", "_classification": "all_star_or_exhibition" },
+    { "id": 18, "conference": null,       "city": "",           "name": "Team WNBA", "full_name": "Team WNBA",         "abbreviation": "WNBA","_classification": "all_star_or_exhibition" },
+    { "id": 19, "conference": null,       "city": "",           "name": "Team USA",  "full_name": "Team USA",          "abbreviation": "USA", "_classification": "all_star_or_exhibition" },
+    { "id": 20, "conference": null,       "city": "",           "name": "Team Delle Donne","full_name":"Team Delle Donne","abbreviation":"TDD","_classification":"all_star_or_exhibition" },
+    { "id": 21, "conference": null,       "city": "",           "name": "Team Parker","full_name":"Team Parker","abbreviation":"TPR","_classification":"all_star_or_exhibition" },
+    { "id": 22, "conference": null,       "city": "",           "name": "Team Wilson","full_name":"Team Wilson","abbreviation":"TWL","_classification":"all_star_or_exhibition" },
+    { "id": 23, "conference": null,       "city": "",           "name": "Team Stewart","full_name":"Team Stewart","abbreviation":"TST","_classification":"all_star_or_exhibition" },
+    { "id": 24, "conference": null,       "city": "",           "name": "Team Clark","full_name":"Team Clark","abbreviation":"TCK","_classification":"all_star_or_exhibition" },
+    { "id": 25, "conference": null,       "city": "",           "name": "Team Collier","full_name":"Team Collier","abbreviation":"TCL","_classification":"all_star_or_exhibition" },
+    { "id": 26, "conference": null,       "city": "",           "name": "Brazil",    "full_name": "Brazil",            "abbreviation": "BRA", "_classification": "national_team" },
+    { "id": 27, "conference": null,       "city": "",           "name": "Japan",     "full_name": "Japan",             "abbreviation": "JPN", "_classification": "national_team" },
+    { "id": 28, "conference": null,       "city": "",           "name": "Australia", "full_name": "Australia",         "abbreviation": "AUS", "_classification": "national_team" },
+    { "id": 29, "conference": null,       "city": "",           "name": "Puerto Rico","full_name": "Puerto Rico",      "abbreviation": "PUR", "_classification": "national_team" },
+    { "id": 32, "conference": null,       "city": "",           "name": "TBD",       "full_name": "TBD",               "abbreviation": "TBD", "_classification": "placeholder" },
+    { "id": 33, "conference": null,       "city": "",           "name": "TBD",       "full_name": "TBD",               "abbreviation": "TBD", "_classification": "placeholder" }
+  ]
+}

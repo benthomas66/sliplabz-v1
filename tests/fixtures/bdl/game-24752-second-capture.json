@@ -1,0 +1,42 @@
+{
+  "provenance": {
+    "kind": "audit_derived",
+    "authority_sources": [
+      "BALLDONTLIE sub-spec §12C.1 (game 24752 second capture at 2026-07-10T21:05:04Z, 27 rows)",
+      "BALLDONTLIE sub-spec §12C.2 (identical to first capture: 0 duplicates, 0 added/removed, per-row hashes identical)"
+    ],
+    "notes": "Byte-identical row content to game-24752-first-capture.json — same 3 rows in the same order with the same field values. Test asserts that source_hash is IDENTICAL, therefore change_kind = metadata_change (no material correction)."
+  },
+  "retrieved_at": "2026-07-10T21:05:04Z",
+  "endpoint": "player_stats",
+  "params": { "game_ids[]": 24752, "per_page": 100 },
+  "response": {
+    "data": [
+      {
+        "id": 500001, "min": "34",
+        "pts": 22, "reb": 6, "ast": 4, "fg3m": 2,
+        "stl": 1, "blk": 0, "turnover": 3, "fgm": 9, "fga": 17, "fg3a": 6, "ftm": 2, "fta": 2, "oreb": 1, "dreb": 5, "pf": 3, "plus_minus": 5,
+        "player": { "id": 65001, "first_name": "Alpha", "last_name": "One", "team": { "id": 3, "full_name": "Connecticut Sun", "abbreviation": "CON", "city": "Connecticut", "conference": "Eastern" } },
+        "game": { "id": 24752, "date": "2026-05-08T23:00:00Z", "season": 2026, "season_type": 2, "status": "Final", "period": 4, "time": "", "postseason": false, "home_team_id": 3, "visitor_team_id": 5 },
+        "team": { "id": 3, "full_name": "Connecticut Sun", "abbreviation": "CON", "city": "Connecticut", "conference": "Eastern" }
+      },
+      {
+        "id": 500002, "min": "22",
+        "pts": 11, "reb": 8, "ast": 2, "fg3m": 0,
+        "stl": 0, "blk": 2, "turnover": 1, "fgm": 4, "fga": 10, "fg3a": 2, "ftm": 3, "fta": 4, "oreb": 3, "dreb": 5, "pf": 4, "plus_minus": -2,
+        "player": { "id": 65002, "first_name": "Alpha", "last_name": "Two", "team": { "id": 3, "full_name": "Connecticut Sun", "abbreviation": "CON", "city": "Connecticut", "conference": "Eastern" } },
+        "game": { "id": 24752, "date": "2026-05-08T23:00:00Z", "season": 2026, "season_type": 2, "status": "Final", "period": 4, "time": "", "postseason": false, "home_team_id": 3, "visitor_team_id": 5 },
+        "team": { "id": 3, "full_name": "Connecticut Sun", "abbreviation": "CON", "city": "Connecticut", "conference": "Eastern" }
+      },
+      {
+        "id": 500003, "min": "--",
+        "pts": null, "reb": null, "ast": null, "fg3m": null,
+        "player": { "id": 712, "first_name": "Aaudit", "last_name": "Fixture1", "team": { "id": 3, "full_name": "Connecticut Sun", "abbreviation": "CON", "city": "Connecticut", "conference": "Eastern" } },
+        "game": { "id": 24752, "date": "2026-05-08T23:00:00Z", "season": 2026, "season_type": 2, "status": "Final", "period": 4, "time": "", "postseason": false, "home_team_id": 3, "visitor_team_id": 5 },
+        "team": { "id": 3, "full_name": "Connecticut Sun", "abbreviation": "CON", "city": "Connecticut", "conference": "Eastern" },
+        "_audit_source": "BDL §7.1 (712/24752 minutes=--)"
+      }
+    ],
+    "meta": { "next_cursor": null }
+  }
+}

@@ -1,0 +1,72 @@
+{
+  "provenance": {
+    "kind": "synthetic",
+    "authority_sources": [
+      "BALLDONTLIE sub-spec §13 (current player availability)",
+      "BALLDONTLIE sub-spec §20 (interpretation states; absence lifecycle)"
+    ],
+    "notes": "Three snapshots exercise the required tests: (1) initial complete snapshot with two players reported; (2) later complete snapshot where one player is present, one absent → absent player transitions to not_returned_latest_complete_snapshot; (3) failed pull that must NOT change presence."
+  },
+  "snapshot_1_complete": {
+    "run": {
+      "bdl_ingestion_run_id": "00000000-0000-0000-0000-b00d00000001",
+      "endpoint": "player_injuries",
+      "completion_state": "complete",
+      "completed_at": "2026-07-11T10:00:00Z",
+      "query_scope_key": "all"
+    },
+    "observations": [
+      {
+        "provider_player_id": "600001",
+        "internal_player_id": "00000000-0000-0000-0000-00000000p001",
+        "source_status": "Day-To-Day",
+        "source_comment": "Ankle sprain, questionable for next game",
+        "source_return_date_text": "Next game",
+        "latest_snapshot_id": "00000000-0000-0000-0000-a00d00000001",
+        "observed_at": "2026-07-11T10:00:00Z",
+        "_synthetic": true
+      },
+      {
+        "provider_player_id": "600002",
+        "internal_player_id": "00000000-0000-0000-0000-00000000p002",
+        "source_status": "Out",
+        "source_comment": "Personal reasons",
+        "source_return_date_text": "",
+        "latest_snapshot_id": "00000000-0000-0000-0000-a00d00000002",
+        "observed_at": "2026-07-11T10:00:00Z",
+        "_synthetic": true
+      }
+    ]
+  },
+  "snapshot_2_complete_p2_disappears": {
+    "run": {
+      "bdl_ingestion_run_id": "00000000-0000-0000-0000-b00d00000002",
+      "endpoint": "player_injuries",
+      "completion_state": "complete",
+      "completed_at": "2026-07-11T10:15:00Z",
+      "query_scope_key": "all"
+    },
+    "observations": [
+      {
+        "provider_player_id": "600001",
+        "internal_player_id": "00000000-0000-0000-0000-00000000p001",
+        "source_status": "Day-To-Day",
+        "source_comment": "Ankle sprain, questionable for next game",
+        "source_return_date_text": "Next game",
+        "latest_snapshot_id": "00000000-0000-0000-0000-a00d00000003",
+        "observed_at": "2026-07-11T10:15:00Z",
+        "_synthetic": true
+      }
+    ]
+  },
+  "snapshot_3_failed": {
+    "run": {
+      "bdl_ingestion_run_id": "00000000-0000-0000-0000-b00d00000003",
+      "endpoint": "player_injuries",
+      "completion_state": "failed_transport",
+      "completed_at": "2026-07-11T10:30:00Z",
+      "query_scope_key": "all"
+    },
+    "observations": []
+  }
+}

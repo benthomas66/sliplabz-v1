@@ -1,0 +1,15 @@
+{
+  "provenance": {
+    "kind": "audit_derived",
+    "authority_sources": [
+      "BALLDONTLIE sub-spec §12A.2 (205 rows, 15 teams, 0 missing IDs, 0 duplicates)",
+      "BALLDONTLIE sub-spec §12A.3 (per-team assignment counts)"
+    ],
+    "notes": "Compact stand-in for the 205-row audit. Per-team counts match §12A.3 exactly. Individual player rows are synthetic beyond team assignment; the §12A audit does not enumerate individual players, only counts."
+  },
+  "team_assignment_counts": {
+    "3": 14, "4": 14, "8": 13, "5": 15, "10": 14, "1": 14, "30": 14, "31": 14,
+    "6": 13, "2": 15, "13": 13, "9": 12, "7": 13, "12": 13, "11": 14
+  },
+  "expected_total_rows": 205
+}

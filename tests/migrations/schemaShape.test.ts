@@ -159,15 +159,132 @@ describe('supabase migrations — shape lint', () => {
     // Forward-only greenfield: no migration should drop or truncate any
     // identity table it just created. If a future migration re-partitions
     // one of these tables, it must add a follow-up column instead.
+    // Strip -- line comments first so descriptive text like "NO UPDATE, DELETE,
+    // or TRUNCATE" in header comments does not register as a violation.
     const forbidden = /(?:^|\s)(DROP\s+TABLE|TRUNCATE)\s+/i;
     for (const f of migrationFiles) {
-      const s = read(f);
-      assert.doesNotMatch(s, forbidden, `destructive DDL in ${f}`);
+      const raw = read(f);
+      const stripped = raw
+        .split('\n')
+        .map((line) => line.replace(/--.*$/, ''))
+        .join('\n');
+      assert.doesNotMatch(stripped, forbidden, `destructive DDL in ${f}`);
     }
   });
 
   it('no `.down.sql` files exist; V1-1 forward-fix-only strategy', () => {
     const downs = readdirSync(migrationsDir).filter((f) => f.endsWith('.down.sql'));
     assert.equal(downs.length, 0);
+  });
+
+  // -------------------------------------------------------------------------
+  // V1-2 additions
+  // -------------------------------------------------------------------------
+
+  it('V1-2: all V1-2 enum types are declared exactly once in the V1-2 enums migration', () => {
+    const bdlEnums = read('20260711120000_bdl_enums.sql');
+    const required = [
+      'CREATE TYPE bdl_endpoint',
+      'CREATE TYPE bdl_run_state',
+      'CREATE TYPE bdl_minutes_status',
+      'CREATE TYPE player_stat_eligibility',
+      'CREATE TYPE player_stat_quarantine_reason',
+      'CREATE TYPE availability_interpretation_state',
+      'CREATE TYPE post_final_reconciliation_kind',
+      'CREATE TYPE invalidation_entity_kind',
+      'CREATE TYPE invalidation_reason',
+    ];
+    for (const stanza of required) {
+      assert.ok(bdlEnums.includes(stanza), `missing: ${stanza}`);
+    }
+  });
+
+  it('V1-2: player_game_stats has UNIQUE (provider, provider_player_id, provider_game_id)', () => {
+    const s = read('20260711120007_player_game_stats.sql');
+    assert.match(
+      s,
+      /UNIQUE\s*\(\s*provider\s*,\s*provider_player_id\s*,\s*provider_game_id\s*\)/i
+    );
+  });
+
+  it('V1-2: player_game_stats enforces minutes-state consistency CHECKs', () => {
+    const s = read('20260711120007_player_game_stats.sql');
+    assert.match(s, /minutes_status\s*=\s*'played'.*parsed_minutes\s*>\s*0/is);
+    assert.match(s, /minutes_status\s*=\s*'dnp'.*parsed_minutes\s*=\s*0/is);
+    assert.match(
+      s,
+      /minutes_status\s*=\s*'unresolved_non_numeric'.*parsed_minutes\s+IS\s+NULL/is
+    );
+  });
+
+  it('V1-2: bdl_raw_responses has no `updated_at` — immutable in intent', () => {
+    const s = read('20260711120002_bdl_raw_responses.sql');
+    assert.doesNotMatch(s, /updated_at\s+timestamptz/i);
+  });
+
+  it('V1-2: bdl_ingestion_runs enforces (running xor completed_at)', () => {
+    const s = read('20260711120001_bdl_ingestion_runs.sql');
+    assert.match(
+      s,
+      /completion_state\s*=\s*'running'\s+AND\s+completed_at\s+IS\s+NULL/i
+    );
+    assert.match(
+      s,
+      /completion_state\s*<>\s*'running'\s+AND\s+completed_at\s+IS\s+NOT\s+NULL/i
+    );
+  });
+
+  it('V1-2: bdl_import_watermarks primary key is (endpoint, query_scope_key)', () => {
+    const s = read('20260711120003_bdl_import_watermarks.sql');
+    assert.match(
+      s,
+      /PRIMARY\s+KEY\s*\(\s*endpoint\s*,\s*query_scope_key\s*\)/i
+    );
+  });
+
+  it('V1-2: append-only history + observations + invalidations are not the target of DROP/DELETE/TRUNCATE in any migration', () => {
+    const targets = [
+      'player_game_stat_history',
+      'game_status_observations',
+      'recomputation_invalidations',
+    ];
+    // Strip -- line comments before matching so descriptive text like
+    // "no UPDATE, DELETE, or TRUNCATE" does not register as a violation.
+    const stripComments = (sql: string): string =>
+      sql
+        .split('\n')
+        .map((line) => line.replace(/--.*$/, ''))
+        .join('\n');
+    for (const f of migrationFiles) {
+      const raw = read(f);
+      const s = stripComments(raw).toLowerCase();
+      for (const t of targets) {
+        if (s.includes(t)) {
+          assert.doesNotMatch(s, new RegExp(`drop\\s+table[^;]*${t}`, 'i'));
+          assert.doesNotMatch(s, new RegExp(`truncate\\s+[^;]*${t}`, 'i'));
+          assert.doesNotMatch(s, new RegExp(`delete\\s+from\\s+${t}`, 'i'));
+        }
+      }
+    }
+  });
+
+  it('V1-2: recomputation_invalidations requires at least one triggering ref via CHECK', () => {
+    const s = read('20260711120011_recomputation_invalidations.sql');
+    assert.match(
+      s,
+      /CHECK\s*\(\s*triggering_history_id\s+IS\s+NOT\s+NULL\s+OR\s+triggering_observation_id\s+IS\s+NOT\s+NULL\s*\)/i
+    );
+  });
+
+  it('V1-2: post_final_reconciliation_schedule enforces completed_at & completed_by_run_id are paired', () => {
+    const s = read('20260711120010_post_final_reconciliation_schedule.sql');
+    assert.match(
+      s,
+      /completed_at\s+IS\s+NULL\s+AND\s+completed_by_run_id\s+IS\s+NULL/i
+    );
+    assert.match(
+      s,
+      /completed_at\s+IS\s+NOT\s+NULL\s+AND\s+completed_by_run_id\s+IS\s+NOT\s+NULL/i
+    );
   });
 });

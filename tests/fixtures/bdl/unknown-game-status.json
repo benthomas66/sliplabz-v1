@@ -1,0 +1,35 @@
+{
+  "provenance": {
+    "kind": "synthetic",
+    "authority_sources": [
+      "BALLDONTLIE sub-spec §10 (unknown status values are quarantined)"
+    ],
+    "notes": "Crafted BDL game object whose raw status is 'Delayed' — a string not in the recognized status map. Test asserts mapping to canonical_status='unresolved' with is_unknown=true, and that dependent player-stat rows for this game are NOT eligible."
+  },
+  "game": {
+    "id": 98765,
+    "date": "2026-07-11T23:00:00Z",
+    "season": 2026,
+    "season_type": 2,
+    "status": "Delayed",
+    "period": 0,
+    "time": "",
+    "postseason": false,
+    "home_team_id": 3,
+    "visitor_team_id": 5,
+    "home_team": { "id": 3, "full_name": "Connecticut Sun", "abbreviation": "CON", "city": "Connecticut", "conference": "Eastern" },
+    "visitor_team": { "id": 5, "full_name": "Golden State Valkyries", "abbreviation": "GS", "city": "Golden State", "conference": "Western" },
+    "_synthetic": true
+  },
+  "player_stats_row": {
+    "id": 12345,
+    "min": "28",
+    "pts": 15, "reb": 6, "ast": 3, "fg3m": 2,
+    "player": { "id": 65001, "first_name": "Alpha", "last_name": "One", "team": { "id": 3, "full_name": "Connecticut Sun", "abbreviation": "CON", "city": "Connecticut", "conference": "Eastern" } },
+    "game": {
+      "id": 98765, "status": "Delayed", "period": 0, "time": "", "season": 2026, "season_type": 2, "postseason": false, "home_team_id": 3, "visitor_team_id": 5
+    },
+    "team": { "id": 3, "full_name": "Connecticut Sun", "abbreviation": "CON", "city": "Connecticut", "conference": "Eastern" },
+    "_synthetic": true
+  }
+}

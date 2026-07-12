@@ -1,0 +1,49 @@
+{
+  "provenance": {
+    "kind": "synthetic",
+    "authority_sources": [
+      "BALLDONTLIE sub-spec §12C.4 (V1 reconciliation schedule contract)",
+      "BALLDONTLIE sub-spec §12C.5 (correction semantics — participation, minutes, counting stats, team assignment)"
+    ],
+    "notes": "Represents the correction pair the §12C.6 audit gap requires. `first_capture` is the initial post-final pull; `second_capture` is the ~2h follow-up in which the row's `pts` and `reb` have been materially corrected. Every row is synthetic; the correction is crafted so exactly two counting fields change while minutes remain identical, so the change_kind is `material_correction` without minutes_state_changed."
+  },
+  "first_capture": {
+    "retrieved_at": "2026-06-15T22:15:00Z",
+    "endpoint": "player_stats",
+    "params": { "game_ids[]": 99001, "per_page": 100 },
+    "response": {
+      "data": [
+        {
+          "id": 900001, "min": "31",
+          "pts": 18, "reb": 7, "ast": 5, "fg3m": 3,
+          "stl": 2, "blk": 1, "turnover": 4, "fgm": 7, "fga": 15, "fg3a": 6, "ftm": 1, "fta": 2, "oreb": 2, "dreb": 5, "pf": 3, "plus_minus": 8,
+          "player": { "id": 900001, "first_name": "Correcta", "last_name": "Player", "team": { "id": 3, "full_name": "Connecticut Sun", "abbreviation": "CON", "city": "Connecticut", "conference": "Eastern" } },
+          "game": { "id": 99001, "date": "2026-06-15T22:00:00Z", "season": 2026, "season_type": 2, "status": "Final", "period": 4, "time": "", "postseason": false, "home_team_id": 3, "visitor_team_id": 5 },
+          "team": { "id": 3, "full_name": "Connecticut Sun", "abbreviation": "CON", "city": "Connecticut", "conference": "Eastern" },
+          "_synthetic": true
+        }
+      ],
+      "meta": { "next_cursor": null }
+    }
+  },
+  "second_capture": {
+    "retrieved_at": "2026-06-16T00:15:00Z",
+    "endpoint": "player_stats",
+    "params": { "game_ids[]": 99001, "per_page": 100 },
+    "response": {
+      "data": [
+        {
+          "id": 900001, "min": "31",
+          "pts": 20, "reb": 8, "ast": 5, "fg3m": 3,
+          "stl": 2, "blk": 1, "turnover": 4, "fgm": 8, "fga": 15, "fg3a": 6, "ftm": 1, "fta": 2, "oreb": 2, "dreb": 6, "pf": 3, "plus_minus": 10,
+          "player": { "id": 900001, "first_name": "Correcta", "last_name": "Player", "team": { "id": 3, "full_name": "Connecticut Sun", "abbreviation": "CON", "city": "Connecticut", "conference": "Eastern" } },
+          "game": { "id": 99001, "date": "2026-06-15T22:00:00Z", "season": 2026, "season_type": 2, "status": "Final", "period": 4, "time": "", "postseason": false, "home_team_id": 3, "visitor_team_id": 5 },
+          "team": { "id": 3, "full_name": "Connecticut Sun", "abbreviation": "CON", "city": "Connecticut", "conference": "Eastern" },
+          "_synthetic": true,
+          "_correction_note": "pts 18→20, reb 7→8, dreb 5→6, fgm 7→8, plus_minus 8→10 (material_correction; minutes unchanged)"
+        }
+      ],
+      "meta": { "next_cursor": null }
+    }
+  }
+}

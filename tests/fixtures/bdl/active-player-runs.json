@@ -1,0 +1,49 @@
+{
+  "provenance": {
+    "kind": "synthetic",
+    "authority_sources": [
+      "BALLDONTLIE sub-spec §12A.4 (a player missing from a later completed snapshot is marked not_seen_active; NEVER on partial pull)",
+      "BALLDONTLIE sub-spec §12A.7 (roster-snapshot storage: first_seen_active, last_seen_active, observed team change)"
+    ],
+    "notes": "Three runs exercise the required behavior: (A) initial complete active-player run observing three players; (B) later complete run where one player disappears and another has a new team → newly_marked_not_seen and team_changes both fire; (C) failed active-player pull that must NOT touch presence."
+  },
+  "run_A_complete": {
+    "run": {
+      "bdl_ingestion_run_id": "00000000-0000-0000-0000-ap0000000001",
+      "endpoint": "active_players",
+      "completion_state": "complete",
+      "completed_at": "2026-07-11T09:00:00Z",
+      "query_scope_key": "all"
+    },
+    "observed_players": [
+      { "provider_player_id": "700001", "provider_team_id": "3" },
+      { "provider_player_id": "700002", "provider_team_id": "4" },
+      { "provider_player_id": "700003", "provider_team_id": "5" }
+    ]
+  },
+  "run_B_complete_p2_missing_p3_traded": {
+    "run": {
+      "bdl_ingestion_run_id": "00000000-0000-0000-0000-ap0000000002",
+      "endpoint": "active_players",
+      "completion_state": "complete",
+      "completed_at": "2026-07-12T09:00:00Z",
+      "query_scope_key": "all"
+    },
+    "observed_players": [
+      { "provider_player_id": "700001", "provider_team_id": "3" },
+      { "provider_player_id": "700003", "provider_team_id": "6" }
+    ]
+  },
+  "run_C_failed_partial": {
+    "run": {
+      "bdl_ingestion_run_id": "00000000-0000-0000-0000-ap0000000003",
+      "endpoint": "active_players",
+      "completion_state": "partial_pagination",
+      "completed_at": "2026-07-12T10:00:00Z",
+      "query_scope_key": "all"
+    },
+    "observed_players": [
+      { "provider_player_id": "700001", "provider_team_id": "3" }
+    ]
+  }
+}

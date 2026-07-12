@@ -1,0 +1,25 @@
+{
+  "provenance": {
+    "kind": "synthetic",
+    "authority_sources": [
+      "BALLDONTLIE sub-spec §5 (cursor pagination; partial traversal is not complete)",
+      "BALLDONTLIE sub-spec §15 (500 handling)",
+      "BALLDONTLIE sub-spec §19.1 (a paginated import is complete only when every page succeeds)"
+    ],
+    "notes": "A 12-page traversal fixture. Pages 0..9 succeed with real data + a real cursor; page 10 returns a 500 error. The traversal must retain pages 0..9 for diagnosis, close the run in state 'failed_transport' (or 'partial_pagination' if the client model normalizes the wire failure), and NOT advance any watermark."
+  },
+  "total_pages_expected": 12,
+  "pages": [
+    { "page_index": 0, "cursor_sent": null,           "ok": true,  "response": { "data": [{ "id": 1, "_synthetic": true }], "meta": { "next_cursor": "fp_c1" } } },
+    { "page_index": 1, "cursor_sent": "fp_c1",        "ok": true,  "response": { "data": [{ "id": 2, "_synthetic": true }], "meta": { "next_cursor": "fp_c2" } } },
+    { "page_index": 2, "cursor_sent": "fp_c2",        "ok": true,  "response": { "data": [{ "id": 3, "_synthetic": true }], "meta": { "next_cursor": "fp_c3" } } },
+    { "page_index": 3, "cursor_sent": "fp_c3",        "ok": true,  "response": { "data": [{ "id": 4, "_synthetic": true }], "meta": { "next_cursor": "fp_c4" } } },
+    { "page_index": 4, "cursor_sent": "fp_c4",        "ok": true,  "response": { "data": [{ "id": 5, "_synthetic": true }], "meta": { "next_cursor": "fp_c5" } } },
+    { "page_index": 5, "cursor_sent": "fp_c5",        "ok": true,  "response": { "data": [{ "id": 6, "_synthetic": true }], "meta": { "next_cursor": "fp_c6" } } },
+    { "page_index": 6, "cursor_sent": "fp_c6",        "ok": true,  "response": { "data": [{ "id": 7, "_synthetic": true }], "meta": { "next_cursor": "fp_c7" } } },
+    { "page_index": 7, "cursor_sent": "fp_c7",        "ok": true,  "response": { "data": [{ "id": 8, "_synthetic": true }], "meta": { "next_cursor": "fp_c8" } } },
+    { "page_index": 8, "cursor_sent": "fp_c8",        "ok": true,  "response": { "data": [{ "id": 9, "_synthetic": true }], "meta": { "next_cursor": "fp_c9" } } },
+    { "page_index": 9, "cursor_sent": "fp_c9",        "ok": true,  "response": { "data": [{ "id": 10, "_synthetic": true }], "meta": { "next_cursor": "fp_c10" } } },
+    { "page_index": 10, "cursor_sent": "fp_c10",      "ok": false, "error": { "http_status": 500, "content_type": "text/plain", "raw_body_text": "Internal Server Error", "kind": "failed_transport", "detail": "HTTP 500 on page 10 of 12" } }
+  ]
+}
