@@ -13,3 +13,10 @@
 
 # Node dependency tree — package.json + package-lock.json are the source of truth
 node_modules/
+
+# Supabase CLI local link/session metadata (per-machine, ephemeral state)
+supabase/.temp/
+
+# V1-4b Stage 2 raw provider payloads and operational scratch (governor ruling)
+docs/product/reports/_stage2_discovery_cache/
+docs/product/reports/_stage2_seed_state.json

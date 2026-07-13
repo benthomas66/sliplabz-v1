@@ -220,20 +220,18 @@ describe('persistHistoricalSnapshot — transactional atomicity + isolation (V1-
     assert.equal(qrow.source_class, 'sportsbook');
     assert.equal(qrow.source_snapshot_id, result.market_snapshot_id);
 
-    // Canonical row also written (single_book).
+    // LOAD-BEARING (V1-4b Phase B correction): persistHistoricalSnapshot
+    // NO LONGER writes canonical_closing_points. The per-(event, bookmaker,
+    // market) transaction is the wrong grain — canonical selection must
+    // operate at (game, player, market) cross-book. That work is done by
+    // src/seed/orchestrator/canonicalClosingPointsForSeed.ts after all
+    // per-event persists complete.
+    assert.equal(result.canonical_closing_point_id, null);
     const c = await p.query(
-      `SELECT selection_method, canonical_closing_point, coverage_label
-         FROM canonical_closing_points WHERE internal_game_id = $1`,
+      `SELECT count(*)::int AS n FROM canonical_closing_points WHERE internal_game_id = $1`,
       [base.game_id]
     );
-    const crow = c.rows[0] as {
-      selection_method: string;
-      canonical_closing_point: string;
-      coverage_label: string;
-    };
-    assert.equal(crow.selection_method, 'single_book');
-    assert.equal(Number(crow.canonical_closing_point), 12.5);
-    assert.equal(crow.coverage_label, 'single_book');
+    assert.equal((c.rows[0] as { n: number }).n, 0);
   });
 
   it('LOAD-BEARING PROBE (governor obligation): seeded snapshots are INVISIBLE to CURRENT_ONLY_WHERE_CLAUSE', async (t) => {
@@ -303,8 +301,16 @@ describe('persistHistoricalSnapshot — transactional atomicity + isolation (V1-
     if (skipIfUnavailable(t)) return;
     const p = pool!;
     const base = await seedBase();
-    // Prereq: a canonical_closing_points + player_game_stats row.
+    // Prereq: persist the snapshot, then use the V1-4b Phase B canonical
+    // writer to materialize the canonical row at (game, player, market).
     await persistHistoricalSnapshot(p, buildInput(base));
+    const { deleteAndReplaceCanonicalClosingPointsFromDb } = await import(
+      '../../src/seed/orchestrator/canonicalClosingPointsForSeed.js'
+    );
+    await deleteAndReplaceCanonicalClosingPointsFromDb(p, {
+      restrict_to_internal_game_ids: [base.game_id],
+      computation_version: 2,
+    });
     const cid_row = await p.query(
       `SELECT canonical_closing_point_id, canonical_closing_point
          FROM canonical_closing_points WHERE internal_game_id = $1`,

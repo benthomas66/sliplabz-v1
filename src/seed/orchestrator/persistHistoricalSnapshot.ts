@@ -37,7 +37,6 @@ import { randomUUID } from 'node:crypto';
 
 import { withTransaction, type Tx } from '../../db/transaction.js';
 import type { SliplabzPool } from '../../db/connection.js';
-import { selectCanonicalClosingPoint } from '../../lines/canonicalClosingPoint.js';
 import type {
   CloseCaptureEvaluation,
   HistoricalSourceClosingQuoteCandidate,
@@ -70,12 +69,13 @@ export interface PersistHistoricalSnapshotInput {
   /** Candidate closing quotes for THIS (event, market, bookmaker) triple. */
   readonly candidates: ReadonlyArray<HistoricalSourceClosingQuoteCandidate>;
   /**
-   * When true and the run's population produces a unique modal canonical
-   * point for (event, market) across multiple bookmakers, ALSO write a
-   * canonical_closing_points row. Set false when the caller wants to defer
-   * canonical selection to a batch step.
+   * @deprecated (V1-4b Phase B correction). Ignored. The per-(event,
+   * bookmaker, market) transaction is the WRONG grain for canonical
+   * selection; canonical writing lives in
+   * src/seed/orchestrator/canonicalClosingPointsForSeed.ts and MUST be
+   * invoked once all per-event persists for a game are complete.
    */
-  readonly persist_canonical_when_possible: boolean;
+  readonly persist_canonical_when_possible?: boolean;
 }
 
 export interface PersistHistoricalSnapshotResult {
@@ -326,71 +326,25 @@ export async function persistHistoricalSnapshot(
       source_closing_quote_ids.push(scq_id);
     }
 
-    // 5. Optional canonical closing point when caller asked and we can select.
-    let canonical_id: string | null = null;
-    if (
-      input.persist_canonical_when_possible &&
-      input.candidates.length > 0 &&
-      input.linked_internal_game_id !== null
-    ) {
-      // Selection input mirrors src/lines/canonicalClosingPoint.ts contract.
-      const selection = selectCanonicalClosingPoint(
-        input.candidates.map((c) => ({
-          bookmaker_key: c.bookmaker_key,
-          source_class: c.source_class,
-          close_capture_state: c.close_capture_state,
-          closing_point: c.closing_point,
-        }))
-      );
-      // Only persist a canonical row when the selection produced one.
-      if (
-        selection.selection_method === 'single_book' ||
-        selection.selection_method === 'unique_modal'
-      ) {
-        // Need at least one mapped player to know internal_player_id.
-        const first_mapped_player =
-          Array.from(
-            input.linked_internal_player_ids_by_normalized_name.values()
-          )[0] ?? null;
-        if (first_mapped_player !== null) {
-          canonical_id = randomUUID();
-          await tx.query(
-            `INSERT INTO canonical_closing_points (
-               canonical_closing_point_id,
-               internal_game_id,
-               internal_player_id,
-               market_key,
-               selection_method,
-               canonical_closing_point,
-               total_eligible_sportsbook_count,
-               sportsbook_count_at_selected_point,
-               coverage_label,
-               close_boundary_utc
-             ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
-             ON CONFLICT (internal_game_id, internal_player_id, market_key) DO NOTHING`,
-            [
-              canonical_id,
-              input.linked_internal_game_id,
-              first_mapped_player,
-              input.market_key,
-              selection.selection_method,
-              selection.canonical_closing_point,
-              selection.total_eligible_sportsbook_count,
-              selection.sportsbook_count_at_selected_point,
-              selection.coverage_label,
-              input.requested_close_boundary_utc,
-            ]
-          );
-        }
-      }
-    }
+    // 5. Canonical closing points are NOT written from this per-(event,
+    //    bookmaker, market) transaction. The correct grain for
+    //    selectCanonicalClosingPoint is (internal_game_id, internal_player_id,
+    //    market_key) with quotes from ALL eligible bookmakers grouped
+    //    together. Computing canonical here would either (a) run modal
+    //    detection across DIFFERENT players' points within one book (which
+    //    returns a nonsensical result), or (b) run over a single quote
+    //    yielding single_book — even when other books have identical quotes
+    //    that would form a unique_modal cross-book.
+    //    See src/seed/orchestrator/canonicalClosingPointsForSeed.ts for the
+    //    correct writer; the caller must invoke it once all per-event persist
+    //    calls for a game are complete.
 
     return Object.freeze({
       oddsapi_ingestion_run_id: ingestion_run_id,
       oddsapi_raw_response_id: raw_response_id,
       market_snapshot_id,
       source_closing_quote_ids: Object.freeze(source_closing_quote_ids),
-      canonical_closing_point_id: canonical_id,
+      canonical_closing_point_id: null,
     });
   });
 }
