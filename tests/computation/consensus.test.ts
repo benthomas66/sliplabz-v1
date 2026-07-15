@@ -68,6 +68,59 @@ describe('line consensus — sportsbook-only, cross-book', () => {
     assert.equal(r.coverage_label, 'unresolved_consensus');
   });
 
+  it('LOAD-BEARING (V1-A1-2a owner test 4): tied_no_unique_mode is INDEPENDENT of sportsbook input order — no first-observed/lower/upper tiebreak leaks', () => {
+    // Governor V1-A1-2a G3 test 4 (owner ruling 2026-07-15, DR-28): a tied
+    // distribution MUST yield tied_no_unique_mode regardless of the order
+    // the offerings arrive in. If any tiebreak (lower-point, upper-point,
+    // first-observed, single-book fallback) were leaking into the
+    // implementation, permuting the inputs would change the result. It
+    // MUST NOT.
+    //
+    // This test is NEW because the existing "LOAD-BEARING (ledger #7)"
+    // test (above) checks a single fixed ordering — it establishes that
+    // tied_no_unique_mode fires on 2-2 splits but does NOT test the
+    // order-independence claim. tests/computation/readPath.test.ts:67
+    // asserts general Set-iteration determinism on a non-tied fixture and
+    // therefore does NOT exercise the tied-mode branch. This is the
+    // dedicated tied-mode order-independence probe.
+    const base = [
+      offering({ bookmaker_key: 'draftkings', point: 12.5 }),
+      offering({ bookmaker_key: 'fanduel',    point: 12.5 }),
+      offering({ bookmaker_key: 'betmgm',     point: 13.5 }),
+      offering({ bookmaker_key: 'williamhill_us', point: 13.5 }),
+    ];
+    // Six distinct permutations: forward, reverse, swap-halves, and three
+    // other reshuffles. A tiebreak that keyed on "first offering", "last
+    // offering", "min point first", or "max point first" would flip the
+    // result for at least one of them.
+    const permutations: ReadonlyArray<ReadonlyArray<typeof base[number]>> = [
+      base,
+      [...base].reverse(),
+      [base[2]!, base[3]!, base[0]!, base[1]!],
+      [base[1]!, base[3]!, base[0]!, base[2]!],
+      [base[3]!, base[0]!, base[2]!, base[1]!],
+      [base[0]!, base[2]!, base[1]!, base[3]!],
+    ];
+    const first = computeLineConsensus(permutations[0]!);
+    assert.equal(first.selection_method, 'tied_no_unique_mode');
+    assert.equal(first.consensus_point, null);
+    for (let i = 1; i < permutations.length; i += 1) {
+      const r = computeLineConsensus(permutations[i]!);
+      assert.equal(
+        r.selection_method,
+        'tied_no_unique_mode',
+        `permutation ${i} broke tied_no_unique_mode — potential tiebreak leak`
+      );
+      assert.equal(
+        r.consensus_point,
+        null,
+        `permutation ${i} produced a non-null consensus_point — potential tiebreak leak`
+      );
+      assert.equal(r.total_eligible_sportsbook_count, 4);
+      assert.equal(r.coverage_label, 'unresolved_consensus');
+    }
+  });
+
   it('single_book: exactly one eligible sportsbook → single_book coverage', () => {
     const r = computeLineConsensus([offering({ point: 12.5 })]);
     assert.equal(r.selection_method, 'single_book');

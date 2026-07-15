@@ -1,14 +1,15 @@
 # SlipLabz Evidence Profile Method
 
-**Status:** OWNER-APPROVED v1.1
-**Method version:** `evidence_method_v1` (UNCHANGED — no output-affecting content changed)
-**Owner approval date:** 2026-07-14 (v1.0); 2026-07-15 (v1.1 ruling on DR-14 / DR-27)
-**Ticket:** V1-A1-1 (Evidence Method Authority) per amendment V1-A1 §31 and merged sequence §30 / GD-12.
+**Status:** OWNER-APPROVED v1.2
+**Method version:** `evidence_method_v1` (UNCHANGED — the DR-29 pre-first-profile method-correction exception is being exercised; the exception expires only under the trigger defined in DR-29 and §I.3: the operative first-profile event recorded in the V1-A1-3 ticket report. Engineering-side rows do not trigger expiry.)
+**Owner approval date:** 2026-07-14 (v1.0); 2026-07-15 (v1.1 ruling on DR-14 / DR-27; v1.2 ruling on tied-consensus)
+**Ticket:** V1-A1-1 (Evidence Method Authority) per amendment V1-A1 §31 and merged sequence §30 / GD-12. Micro-tickets: V1-A1-2a (tied-consensus reason code, this document's v1.2 delta).
 **Authorities:** Complete Spec v1.3 as amended by V1-A1 (§§8–15, 22–27, 34); UX Amendment V1-A2 (§3.3, §19/GD-15); GD-6, GD-8, GD-9, GD-12, GD-13, GD-15, GD-17; `docs/architecture/V1_COMPUTATION_CONTRACT.md`; complete-spec §§12–15.
 
 **Document version history:**
 - v1.0 (2026-07-14) — initial owner approval.
 - v1.1 (2026-07-15) — records the discharged §I.1 pre-engine validation and the re-stamped DR-27 deferral. **No formula, constant, threshold, reason trigger, worked example, or surface rule changed; `method_version` does not bump per DR-24 because no output-affecting content changed.** DR-14 is re-stamped VALIDATED (approved normalizers stand); DR-27 is re-stamped with a new return condition tied to measurable would-be-Strong impact on live current-market data.
+- v1.2 (2026-07-15) — records the owner ruling on tied-consensus handling (see DR-28). Adds a new closed-vocabulary reason code `NO_UNIQUE_CONSENSUS_LINE` with its trigger, effect, translation, and negative scope. Records the pre-first-profile method-correction exception (DR-29) as the sole basis under which `method_version` remains `evidence_method_v1` despite the reason-code taxonomy addition. **NO existing formula, constant, threshold, weight, reason trigger, worked example, or surface rule changed. NO existing reason's meaning, trigger, effect, or translation changed.** `method_version` REMAINS `evidence_method_v1`, permitted under the DR-29 pre-first-profile method-correction exception being exercised now. The exception expires only under the trigger defined in DR-29 and §I.3: the operative first-profile event recorded in the V1-A1-3 ticket report. Engineering-side rows do not trigger expiry.
 
 **Governing distinction (A1 §35):** SlipLabz may state what the available evidence supports. It may not pretend that historical evidence guarantees what will happen next.
 
@@ -55,8 +56,10 @@ Every tunable this method makes appears here. Every threshold, weight, minimum s
 | DR-25 | Historical-coverage requirement | **A profile requires historical coverage such that ≥ 30 days of eligible player-game history exists.** Evaluated from `HistoricalCoverageResult.coverage_start_date` (RME-1). Not derivable inside the engine — depends on the read-model extension per §I.2. | [OWNER APPROVED — 2026-07-14] | |
 | DR-26 | Displayed reasons ordering | **Canonical STORED reason order:** (1) primary supporting evidence, (2) contradicting evidence, (3) quality/coverage limitations. Within category, ordered by absolute contribution magnitude descending; ties broken lexicographically by reason code. **Compact UI surfaces MAY visually elevate a binding cap or availability limitation ahead of support text so the user immediately sees why a profile is capped or unavailable; that emphasis MUST NOT alter the canonical stored order.** | [OWNER APPROVED — 2026-07-14] | |
 | DR-27 | Abnormal-dispersion cap threshold (§I.3) | **FORMAL §11.5 DEFERRAL — no K assigned in `evidence_method_v1`.** A1 §11.5 authorizes an abnormal-dispersion penalty; the trigger threshold `K` remains deliberately unset. **Return path REPLACED per owner ruling 2026-07-15:** DR-27 no longer returns on the strength of the §I.1 offline calibration alone; it returns once the would-be-Strong impact of a candidate cap is MEASURABLE on live current-market data (see §I.3 numbered return condition). Activating any cap later requires a method-version bump per DR-24 AND regression fixtures per A1 §12. | [OWNER APPROVED — DEFERRED UNTIL WOULD-BE-STRONG IMPACT IS MEASURABLE ON LIVE CURRENT-MARKET DATA] | **Owner ruling on the corrected §I.1 calibration:** (a) Do NOT activate an abnormal-dispersion cap in `evidence_method_v1`. `ABNORMAL_DISPERSION` remains RESERVED, non-emitting, without an active trigger, and unavailable to V1-A1-3. (b) Evidence basis: at `K ≥ 2.0`, zero Strong-eligible profiles cap in every market — the rule would be dead; at `K = 1.5`, 13 of 253 Strong-eligible player-market grains exceed the candidate dispersion threshold (points 5 of 84, rebounds 1 of 69, assists 5 of 47, threes 2 of 53). (c) The decision-relevant quantity is NOT the count of Strong-eligible grains above the threshold — it is the count of profiles that would otherwise classify Strong under `evidence_method_v1` AND would be downgraded SOLELY because the K = 1.5 cap fired. That quantity is currently unmeasurable: `current_market_rows` is empty and complete composite scores cannot be computed against live evaluated lines and current-market context. (d) Assists (47) and threes (53) Strong-eligible samples are too limited to justify locking a permanent cross-market threshold from the current calibration alone. (e) DR-27 therefore remains FORMALLY DEFERRED — an acknowledged A1 §11.5 requirement, never a silent omission. See §I.3 for the numbered return condition and the engine prohibition (unchanged in substance — DR-27 does not activate `ABNORMAL_DISPERSION`). |
+| DR-28 | Tied-consensus handling (§C.3.1 + §E.1 `NO_UNIQUE_CONSENSUS_LINE`) | **When the eligible sportsbook point distribution is tied — `line_consensus.selection_method = 'tied_no_unique_mode'` AND `line_consensus.consensus_point IS NULL` AND `eligible_book_count.count > 0` — the canonical Evidence Profile is Unavailable; the engine attaches `NO_UNIQUE_CONSENSUS_LINE` as the PRIMARY reason; `evaluated_line` remains null; no canonical directional profile is persisted or evaluated at any tied sportsbook point.** The engine MUST NOT choose the lower point, choose the higher point, average tied points, use a first-observed point, choose an individual sportsbook's line, or invent another tiebreak. The canonical evidence EVALUATION is unavailable — NOT that sportsbooks have no market. The read model preserves `tied_no_unique_mode` AND the underlying sportsbook point distribution in audit / provenance. `NO_UNIQUE_CONSENSUS_LINE` MUST NOT be used when there are zero eligible sportsbook offerings; when the market source is unavailable; when current-market freshness is unavailable; or when consensus is absent for any reason other than `tied_no_unique_mode` — those states remain governed by their existing reasons, including `NO_CURRENT_MARKET` where factually applicable. | [OWNER APPROVED — 2026-07-15] | Closes an implementation-blocking omission discovered before any Evidence Profile has ever been computed: the nearest existing code (`NO_CURRENT_MARKET`, translation "No current market is available") would be FALSE for a market where several books are actively quoting but split evenly. See §E.1 vocabulary row and §C.3.1 for the trigger, effect, translation, and negative scope. Method-version does NOT bump under DR-29's pre-first-profile exception. |
+| DR-29 | Pre-first-profile method-correction exception (self-terminating) | **Until the operative first-profile event is RECORDED per the trigger defined below, an owner-approved correction to `evidence_method_v1` may be incorporated WITHOUT changing `method_version`, only when ALL of the following are true:** (1) no operative first-profile event has yet been recorded under `evidence_method_v1`; (2) the correction closes an implementation-blocking omission or contradiction discovered before first computation; (3) the correction is expressly approved by the owner AND the governor; (4) the authority document records the correction and its rationale in version history; (5) any schema enum or constraint change is additive and separately migrated; (6) all affected acceptance tests and fixtures are added before the first profile is persisted. **Expiry trigger (clarified 2026-07-15):** the exception expires PERMANENTLY when — AND ONLY when — the **operative first-profile event** is RECORDED in the V1-A1-3 ticket report with the five required fields (timestamp; `method_version`; `evidence_profile_id`; commit HEAD; explicit confirmation that the pre-first-profile exception is permanently closed). **Test fixtures, migration probes, throwaway validation databases (e.g. local Docker Postgres used for schema validation), CI-side runs, and any other engineering-side `evidence_profiles` row insertion are NOT first-profile events and DO NOT trigger expiry.** The RECORDED first-profile event in V1-A1-3's ticket report is the governance trigger and the proof of expiry. Until that record exists, the exception REMAINS ACTIVE — no matter how many rows have been inserted into any evidence_profiles table anywhere. Once that record exists, the exception CANNOT BE REVIVED OR REUSED — no owner or governor may extend, re-open, or re-invoke it, and every subsequent output-affecting formula, threshold, classification, cap, reason-code, trigger, or vocabulary change requires a NEW `method_version` per DR-24. Documentation version changes remain separate from `method_version` changes ONLY when they cannot alter outputs. | [OWNER APPROVED — 2026-07-15] | This is the sole basis under which v1.2 (adding `NO_UNIQUE_CONSENSUS_LINE`) does not bump `method_version` per DR-24. The DR-24 test IS triggered by v1.2's reason-code taxonomy addition; DR-29 supersedes it exactly once. See §I.3 for the V1-A1-3 hand-off obligation and the exception's expiry trigger. |
 
-Any change to any resolved DR row after this approval requires a method-version bump per DR-24 and a regression fixture pass per A1 §12.
+Any change to any resolved DR row after this approval requires a method-version bump per DR-24 and a regression fixture pass per A1 §12 — except as narrowly permitted by DR-29's self-terminating pre-first-profile method-correction exception.
 
 ---
 
@@ -324,6 +327,35 @@ The engine consults `CurrentMarketRow.freshness.state` and `CurrentMarketRow.eli
 
 Availability signal (independent of the table above): `availability_context.presence_state = 'source_unavailable'` attaches `SOURCE_UNAVAILABLE` but does NOT by itself make the profile Unavailable — availability is contextual to the player, not to the market. The `not_returned_latest_complete_snapshot` state is DISCLOSED via reasons but does not cap.
 
+### C.3.1 Tied-consensus handling — DISTINCT from "no current market" (DR-28)
+
+The §C.3 table above governs *whether the current market exists and is fresh enough to consult*. It does NOT govern the case where the eligible sportsbook offerings are ACTIVELY QUOTING but split evenly across two or more equally frequent top points. That case is handled here, per DR-28 and owner ruling 2026-07-15.
+
+**Trigger — all three conditions required (identical to DR-28):**
+
+- `CurrentMarketRow.line_consensus.selection_method = 'tied_no_unique_mode'`; AND
+- `CurrentMarketRow.line_consensus.consensus_point IS NULL`; AND
+- `CurrentMarketRow.eligible_book_count.count > 0`.
+
+**Effect:**
+
+- Force classification `Unavailable`.
+- Attach `NO_UNIQUE_CONSENSUS_LINE` as the PRIMARY reason.
+- `evaluated_line` remains null.
+- Do NOT persist or evaluate a canonical directional profile at any tied sportsbook point.
+- Preserve `tied_no_unique_mode` AND the underlying sportsbook point distribution in audit / provenance so a downstream Research View can display the tied points without SlipLabz having chosen among them.
+
+**No tiebreak.** The engine MUST NOT choose the lower point, choose the higher point, average tied points, use a first-observed point, choose an individual sportsbook's line, or invent another tiebreak. The canonical evidence EVALUATION is unavailable — NOT that sportsbooks have no market. The user-facing translation says exactly that: *"Eligible sportsbooks are evenly split on this line, so no single consensus line can be established."*
+
+**Negative scope — the reason MUST NOT be used when:**
+
+- there are zero eligible sportsbook offerings;
+- the market source is unavailable;
+- current-market freshness is `unavailable`;
+- consensus is absent for any reason other than `tied_no_unique_mode`.
+
+Those states remain governed by their existing reasons — see the §C.3 four-way disambiguation table above, including `NO_CURRENT_MARKET` where factually applicable.
+
 ### C.4 Backfilled-data handling (per DR-23)
 
 - Threshold windows with `includes_backfilled_historical = true` remain input to the engine.
@@ -457,6 +489,7 @@ Governor T3 removes the direction-tagged `STRONG_OVER_AGREEMENT` and `STRONG_UND
 | `UNRESOLVED_PLAYER_MAPPING` | Unavailable | §C.9: player mapping queue open | force Unavailable | "Player identity is under review. Evidence cannot be graded yet." |
 | `UNRESOLVED_EVENT_MAPPING` | Unavailable | §C.9: event mapping queue open | force Unavailable | "Game identity is under review. Evidence cannot be graded yet." |
 | `NO_CURRENT_MARKET` | Unavailable | §C.3: no usable current market per the disambiguation table | force Unavailable | "No current market is available. Evidence cannot be graded." |
+| **`NO_UNIQUE_CONSENSUS_LINE`** (v1.2 addition per DR-28) | Exclusion → Unavailable | §C.3.1: `line_consensus.selection_method = 'tied_no_unique_mode'` AND `line_consensus.consensus_point IS NULL` AND `eligible_book_count.count > 0` (ALL three required). NEGATIVE SCOPE: MUST NOT be used when there are zero eligible sportsbook offerings; when the market source is unavailable; when current-market freshness is `unavailable`; or when consensus is absent for any reason other than `tied_no_unique_mode` — those states remain governed by their existing reasons, including `NO_CURRENT_MARKET` where factually applicable. | force Unavailable (PRIMARY reason). No tiebreak: engine MUST NOT choose lower/upper/average/first-observed/single-book fallback. `evaluated_line` remains null. `tied_no_unique_mode` + underlying point distribution preserved in audit / provenance. | "Eligible sportsbooks are evenly split on this line, so no single consensus line can be established." |
 | `POSTPONED_GAME` | Unavailable | §C.8: `games.status = 'postponed'` | force Unavailable | "Game postponed. Evidence not applicable to this scheduled slot." |
 | `CANCELED_GAME` | Unavailable | §C.8: `games.status = 'canceled'` | force Unavailable | "Game canceled." |
 | `ONE_SIDED_OFFERING` | Downgrade | §C.7: `book_detail.one_sided ∈ {'over_only', 'under_only'}` | cap at Moderate; set `C_MA := 0` | "Only one side is offered across eligible sportsbooks. Cross-side comparison isn't available." |
@@ -811,7 +844,28 @@ The three items below are READ-MODEL-OWNED and MUST be delivered by ticket **V1-
 
    At that time the owner may activate `K = 1.5`, choose another supported threshold, or retain the deferral. Any later activation requires: a method-version bump per DR-24 (`evidence_method_v1 → evidence_method_v2`); regression fixtures per A1 §12; immutable coexistence of prior method-version results; and an explicit authority amendment.
 
-No other decisions remain open or deferred. Every remaining tunable has an approved value in the Decision Register above. The §I.1 pre-engine validation gate is DISCHARGED (see §I.1 status line) and no longer blocks V1-A1-3.
+**Pre-first-profile method-correction exception (DR-29) — active until the operative first-profile event is RECORDED in the V1-A1-3 ticket report.** Until that record exists, an owner-approved correction to `evidence_method_v1` may be incorporated WITHOUT changing `method_version`, only when ALL of the following are true:
+
+1. no operative first-profile event has yet been recorded under `evidence_method_v1` (see the expiry trigger below);
+2. the correction closes an implementation-blocking omission or contradiction discovered before first computation;
+3. the correction is expressly approved by the owner AND the governor;
+4. the authority document records the correction and its rationale in version history;
+5. any schema enum or constraint change is additive and separately migrated;
+6. all affected acceptance tests and fixtures are added before the first profile is persisted.
+
+**Expiry trigger — clarified 2026-07-15 (governance-only, not automatic on row commit).** This exception expires PERMANENTLY when — AND ONLY when — the operative first-profile event is RECORDED in the V1-A1-3 ticket report per the field list below. **Test fixtures, migration probes, throwaway validation databases (including local Docker Postgres used for schema validation), CI-side runs, and any other engineering-side `evidence_profiles` row insertion are NOT first-profile events and DO NOT trigger expiry, regardless of how many rows they insert or where those rows commit.** The RECORDED first-profile event in V1-A1-3's ticket report is the governance trigger and the proof of expiry. Until that record exists, the exception REMAINS ACTIVE. Once that record exists, the exception CANNOT BE REVIVED OR REUSED — no owner or governor may extend, re-open, or re-invoke it — and every subsequent output-affecting formula, threshold, classification, cap, reason-code, trigger, or vocabulary change requires a NEW `method_version` per DR-24. Documentation version changes remain separate from `method_version` changes ONLY when they cannot alter outputs.
+
+**FIRST-PROFILE EVENT — obligation on V1-A1-3 (record here so the engine agent will read it).** The V1-A1-3 ticket report MUST document the operative first-profile event with all five fields below. The recorded event — not the underlying INSERT/COMMIT itself — is the governance trigger that closes DR-29:
+
+- the UTC timestamp of the commit that persisted the first operative row (i.e. the row produced by the V1-A1-3 engine writer against real V1-4c-populated `historical_line_results` + V1-5 read-model inputs, in the production-path or production-equivalent path — NOT a test fixture / migration probe / throwaway validation row);
+- the `method_version` under which the row was written (`evidence_method_v1`);
+- the `evidence_profile_id` (or the `(internal_game_id, internal_player_id, market_key, method_version, computation_version)` grain if multiple rows commit atomically — in which case pick one for the audit anchor and enumerate the rest);
+- the commit HEAD SHA at which the row was persisted;
+- an explicit line: **"The DR-29 pre-first-profile method-correction exception is permanently closed as of this commit."**
+
+V1-A1-3 MUST implement no further authority corrections under DR-29 after that record is written. Any subsequent output-affecting change re-enters through DR-24.
+
+No other decisions remain open or deferred. Every remaining tunable has an approved value in the Decision Register above. The §I.1 pre-engine validation gate is DISCHARGED (see §I.1 status line) and no longer blocks V1-A1-3. DR-28 tied-consensus handling is APPROVED and implemented additively in this authority (v1.2) plus a single additive schema migration; the engine treatment is a V1-A1-3 obligation and is listed in the V1-A1-2a report's hand-off section.
 
 ---
 
@@ -828,7 +882,7 @@ No other decisions remain open or deferred. Every remaining tunable has an appro
 - ✅ **Exclusion rules** stated (§C, §D.1); §C.3 freshness disambiguation is deterministic.
 - ✅ **Tie-breaking** stated (§B.7, DR-20; ranking uses full-precision stored score).
 - ✅ **Examples** — six worked examples (§F), all recomputed under DR-2 = 0.55 and closed reason vocabulary; F.1a now Strong Over, F.1 remains Moderate.
-- ✅ **Limitations** — the Decision Register is the limitation register; §I.3 records DR-27 as FORMALLY DEFERRED under the owner's 2026-07-15 return condition (would-be-Strong impact must be measurable on live current-market data; no `K` assigned in `evidence_method_v1`; `ABNORMAL_DISPERSION` reserved but not emitted). Zero decisions remain open.
+- ✅ **Limitations** — the Decision Register is the limitation register; §I.3 records DR-27 as FORMALLY DEFERRED under the owner's 2026-07-15 return condition (would-be-Strong impact must be measurable on live current-market data; no `K` assigned in `evidence_method_v1`; `ABNORMAL_DISPERSION` reserved but not emitted); DR-28 approves tied-consensus handling → Unavailable + `NO_UNIQUE_CONSENSUS_LINE` (see §C.3.1 and §E.1); DR-29 admits the self-terminating pre-first-profile method-correction exception (see §I.3 for the V1-A1-3 hand-off obligation). Zero decisions remain open.
 - ✅ **Method version** stated (§H, DR-24); locked as `evidence_method_v1`.
 - ✅ **Disclosures** with placement (§G).
 - ✅ **Reason codes** — full closed vocabulary + translations passing §27.6 (§E); T2 adds `MARKET_DISAGREES_WITH_HISTORY`; T3 removes `STRONG_*_AGREEMENT` and adds `WINDOW_AGREEMENT_SUPPORT`; E.4 adds `MARGIN_MEASURES_DISAGREE`.
@@ -842,4 +896,4 @@ No other decisions remain open or deferred. Every remaining tunable has an appro
 
 ---
 
-*End of OWNER-APPROVED v1.1. This method authority is the single source of truth for every subsequent evidence ticket (V1-A1-2 schema, V1-A1-3 engine, V1-A1-4 templates). All decisions are resolved: DR-14 (margin normalizers) is VALIDATED with no change (see §I.1 status line and the DR-14 stamp); DR-27 (abnormal-dispersion threshold) is FORMALLY DEFERRED per §I.3 under the 2026-07-15 return condition — DR-27 returns once would-be-Strong impact of a candidate cap is measurable on live current-market data; `ABNORMAL_DISPERSION` is a RESERVED, non-emitted reason code in `evidence_method_v1`. `method_version` remains `evidence_method_v1` because no output-affecting content changed between v1.0 and v1.1 (DR-24 test not triggered).*
+*End of OWNER-APPROVED v1.2. This method authority is the single source of truth for every subsequent evidence ticket (V1-A1-2 schema, V1-A1-2a tied-consensus reason code, V1-A1-3 engine, V1-A1-4 templates). All decisions are resolved: DR-14 (margin normalizers) is VALIDATED with no change (see §I.1 status line and the DR-14 stamp); DR-27 (abnormal-dispersion threshold) is FORMALLY DEFERRED per §I.3 under the 2026-07-15 return condition — DR-27 returns once would-be-Strong impact of a candidate cap is measurable on live current-market data; `ABNORMAL_DISPERSION` is a RESERVED, non-emitted reason code in `evidence_method_v1`; DR-28 (tied-consensus handling) is APPROVED and implemented additively — the canonical Evidence Profile is Unavailable with primary reason `NO_UNIQUE_CONSENSUS_LINE` when the eligible sportsbooks are tied, and no tiebreak is invented; DR-29 (pre-first-profile method-correction exception) is APPROVED and being exercised for v1.2. `method_version` remains `evidence_method_v1` under that exception. The exception expires only under the trigger defined in DR-29 and §I.3: the operative first-profile event recorded in the V1-A1-3 ticket report. Engineering-side rows do not trigger expiry. V1-A1-3 owns the FIRST-PROFILE EVENT documentation obligation (§I.3).*

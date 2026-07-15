@@ -834,4 +834,141 @@ describe('supabase migrations — shape lint', () => {
     assert.match(s, /governor decision/i);
     assert.match(s, /evaluated_line/);
   });
+
+  // -------------------------------------------------------------------------
+  // V1-A1-2a additions (tied-consensus reason code — owner ruling 2026-07-15)
+  // -------------------------------------------------------------------------
+
+  it('V1-A1-2a: additive migration adds evidence_reason_code value no_unique_consensus_line (LOWERCASE per G1)', () => {
+    const s = read('20260715000000_evidence_reason_code_add_no_unique_consensus_line.sql');
+    // ADD VALUE IF NOT EXISTS 'no_unique_consensus_line' — must be lowercase
+    // to match the enum's existing 21 lowercase values (G1 enum-case mapping).
+    assert.match(
+      s,
+      /ALTER\s+TYPE\s+evidence_reason_code\s+ADD\s+VALUE\s+IF\s+NOT\s+EXISTS\s+'no_unique_consensus_line'/i
+    );
+    // The uppercase spelling MUST NOT appear as an enum literal in this migration.
+    assert.doesNotMatch(s, /ADD\s+VALUE\s+IF\s+NOT\s+EXISTS\s+'NO_UNIQUE_CONSENSUS_LINE'/);
+  });
+
+  it('V1-A1-2a: G2 enum position — the additive migration positions the new value BEFORE abnormal_dispersion so the RESERVED value stays terminal', () => {
+    const s = read('20260715000000_evidence_reason_code_add_no_unique_consensus_line.sql');
+    assert.match(
+      s,
+      /ADD\s+VALUE\s+IF\s+NOT\s+EXISTS\s+'no_unique_consensus_line'\s+BEFORE\s+'abnormal_dispersion'/i
+    );
+  });
+
+  it('V1-A1-2a: the pre-existing 20260714000000 enum migration is NOT modified — all 21 original values survive with unchanged relative order', () => {
+    // The additive migration MUST NOT touch the original file (owner test 6:
+    // "the enum is not reordered or recreated; no data is rewritten").
+    const original = read('20260714000000_evidence_enums.sql');
+    const expected21 = [
+      'window_agreement_support',
+      'favorable_consensus_difference',
+      'positive_margin_support',
+      'unfavorable_consensus_difference',
+      'negative_margin_support',
+      'margin_measures_disagree',
+      'market_disagrees_with_history',
+      'windows_disagree',
+      'stale_current_market',
+      'insufficient_book_coverage',
+      'push_heavy_sample',
+      'one_sided_offering',
+      'source_unavailable',
+      'insufficient_l10_sample',
+      'incomplete_historical_coverage',
+      'unresolved_player_mapping',
+      'unresolved_event_mapping',
+      'no_current_market',
+      'postponed_game',
+      'canceled_game',
+      'abnormal_dispersion',
+    ];
+    // Scope the search to WITHIN the CREATE TYPE evidence_reason_code AS
+    // ENUM (...) block only. Some enum labels are ALSO reason-code names
+    // that appear in comments elsewhere in the file (e.g.
+    // `market_disagrees_with_history` also names a `evidence_quality_cap_reason`
+    // value and is quoted in the file's descriptive comments), so a
+    // whole-file search would find those first.
+    const stripped = original
+      .split('\n')
+      .map((line) => line.replace(/--.*$/, ''))
+      .join('\n');
+    const enumBlock = stripped.match(
+      /CREATE TYPE\s+evidence_reason_code\s+AS\s+ENUM\s*\(([\s\S]*?)\)/i
+    );
+    assert.ok(enumBlock, 'CREATE TYPE evidence_reason_code block not found');
+    const body = enumBlock![1] ?? '';
+    // Every original value still present in the enum body.
+    for (const v of expected21) {
+      assert.ok(body.includes(`'${v}'`), `missing original value: ${v}`);
+    }
+    // Relative order preserved: find each value's index inside the enum
+    // body and verify the sequence is strictly increasing.
+    const positions = expected21.map((v) => body.indexOf(`'${v}'`));
+    for (let i = 1; i < positions.length; i += 1) {
+      assert.ok(
+        positions[i]! > positions[i - 1]!,
+        `original enum value order changed: ${expected21[i - 1]} at ${positions[i - 1]}, ${expected21[i]} at ${positions[i]}`
+      );
+    }
+    // no_unique_consensus_line is NOT in the original file's enum body
+    // (added in the additive migration; original is untouched).
+    assert.doesNotMatch(body, /'no_unique_consensus_line'/);
+  });
+
+  it('V1-A1-2a: additive migration contains ONLY ALTER TYPE (no CHECK / INSERT / UPDATE referencing the new value in same tx — PostgreSQL constraint)', () => {
+    const s = read('20260715000000_evidence_reason_code_add_no_unique_consensus_line.sql');
+    // PostgreSQL forbids using an enum value in the same transaction that
+    // added it. This test asserts the migration does not attempt to.
+    // Only allowed statements: ALTER TYPE ... ADD VALUE and COMMENT ON TYPE.
+    // Strip line comments before scanning.
+    const stripped = s
+      .split('\n')
+      .map((line) => line.replace(/--.*$/, ''))
+      .join('\n');
+    // No INSERT referencing the new value.
+    assert.doesNotMatch(
+      stripped,
+      /INSERT\s+INTO[^;]*'no_unique_consensus_line'/i
+    );
+    // No CHECK / ADD CONSTRAINT referencing the new value.
+    assert.doesNotMatch(
+      stripped,
+      /(CHECK|ADD\s+CONSTRAINT)[^;]*'no_unique_consensus_line'/i
+    );
+    // No UPDATE referencing the new value.
+    assert.doesNotMatch(
+      stripped,
+      /UPDATE[^;]*'no_unique_consensus_line'/i
+    );
+  });
+
+  it('V1-A1-2a: authority (v1.2) records the DR-28 tied-consensus ruling and DR-29 pre-first-profile exception', () => {
+    const authorityPath = resolve(here, '../../docs/product/EVIDENCE_PROFILE_METHOD_V1.md');
+    const md = readFileSync(authorityPath, 'utf8');
+    // Version-history entry for v1.2 exists and marks method_version UNCHANGED
+    // permitted by DR-29 only.
+    assert.match(md, /v1\.2\s*\(2026-07-15\)/i);
+    assert.match(md, /NO_UNIQUE_CONSENSUS_LINE/);
+    assert.match(md, /DR-28/);
+    assert.match(md, /DR-29/);
+    // The exception is explicitly self-terminating with an owner-clarified
+    // expiry trigger (2026-07-15): expiry is tied to the operative
+    // first-profile event RECORDED in the V1-A1-3 ticket report, NOT to
+    // any test/fixture/migration-probe row insertion.
+    assert.match(md, /expires\s+PERMANENTLY\s+when\s+—\s+AND\s+ONLY\s+when\s+—\s+the\s+.*first-profile\s+event.*is\s+RECORDED/i);
+    assert.match(md, /Test\s+fixtures,\s+migration\s+probes,\s+throwaway\s+validation\s+databases/i);
+    assert.match(md, /governance\s+trigger\s+and\s+(?:the\s+)?proof\s+of\s+expiry/i);
+    assert.match(md, /CANNOT\s+BE\s+REVIVED\s+OR\s+REUSED/i);
+    // The verbatim user-facing translation must be present exactly once.
+    assert.match(
+      md,
+      /Eligible sportsbooks are evenly split on this line, so no single consensus line can be established\./
+    );
+    // The negative-scope clause is present.
+    assert.match(md, /NEGATIVE\s+SCOPE/i);
+  });
 });
