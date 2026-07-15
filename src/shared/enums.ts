@@ -366,3 +366,105 @@ export type RealLineOutcome = (typeof REAL_LINE_OUTCOMES)[number];
 
 export const REAL_LINE_WINDOW_TYPES = ['L5', 'L10', 'L20', 'season'] as const;
 export type RealLineWindowType = (typeof REAL_LINE_WINDOW_TYPES)[number];
+
+// -- V1-A1-2 evidence-profile enums (mirror supabase/migrations/20260714000000_evidence_enums.sql) --
+//
+// Authorities:
+//   docs/product/EVIDENCE_PROFILE_METHOD_V1.md
+//     - §D.1 + GD-15 → EVIDENCE_CLASSIFICATIONS (seven-value taxonomy)
+//     - §B.7        → EVIDENCE_DIRECTIONS
+//     - A1 §25 + §17 + §13.3 → EVIDENCE_EVALUATED_SOURCE_KINDS
+//     - §C.2 / §C.3 / §C.5 / §C.6 / §C.7 → EVIDENCE_QUALITY_CAP_REASONS
+//     - §A.4 RME-3 → EVIDENCE_ONE_SIDED_STATES
+//     - §E.1 closed vocabulary → EVIDENCE_REASON_CODES
+//     - §E.2 + DR-26 → EVIDENCE_REASON_CATEGORIES
+//
+// Every string here is verbatim identical to the Postgres enum label; the
+// tests/evidence/schema.test.ts suite asserts that identity so a divergence
+// fails at test time rather than at run time.
+
+export const EVIDENCE_CLASSIFICATIONS = [
+  'strong_over_evidence',
+  'moderate_over_evidence',
+  'mixed_evidence',
+  'moderate_under_evidence',
+  'strong_under_evidence',
+  'insufficient_evidence',
+  'unavailable',
+] as const;
+export type EvidenceClassification = (typeof EVIDENCE_CLASSIFICATIONS)[number];
+
+export const EVIDENCE_DIRECTIONS = ['over', 'under'] as const;
+export type EvidenceDirection = (typeof EVIDENCE_DIRECTIONS)[number];
+
+export const EVIDENCE_EVALUATED_SOURCE_KINDS = [
+  'sportsbook_consensus',
+  'sportsbook_specific',
+  'pickem',
+  'user_entered',
+] as const;
+export type EvidenceEvaluatedSourceKind =
+  (typeof EVIDENCE_EVALUATED_SOURCE_KINDS)[number];
+
+export const EVIDENCE_QUALITY_CAP_REASONS = [
+  'none',
+  'insufficient_book_coverage',
+  'stale_current_market',
+  'market_disagrees_with_history',
+  'push_heavy_sample',
+  'one_sided_offering',
+] as const;
+export type EvidenceQualityCapReason =
+  (typeof EVIDENCE_QUALITY_CAP_REASONS)[number];
+
+export const EVIDENCE_ONE_SIDED_STATES = [
+  'over_only',
+  'under_only',
+  'neither',
+] as const;
+export type EvidenceOneSidedState = (typeof EVIDENCE_ONE_SIDED_STATES)[number];
+
+// Closed reason-code vocabulary per §E.1. ABNORMAL_DISPERSION is RESERVED
+// (DR-27 / §I.3) and MUST NOT be emitted by an `evidence_method_v1` writer.
+// See EVIDENCE_METHOD_VERSION and the reserved-code assertion in
+// tests/evidence/schema.test.ts.
+export const EVIDENCE_REASON_CODES = [
+  'window_agreement_support',
+  'favorable_consensus_difference',
+  'positive_margin_support',
+  'unfavorable_consensus_difference',
+  'negative_margin_support',
+  'margin_measures_disagree',
+  'market_disagrees_with_history',
+  'windows_disagree',
+  'stale_current_market',
+  'insufficient_book_coverage',
+  'push_heavy_sample',
+  'one_sided_offering',
+  'source_unavailable',
+  'insufficient_l10_sample',
+  'incomplete_historical_coverage',
+  'unresolved_player_mapping',
+  'unresolved_event_mapping',
+  'no_current_market',
+  'postponed_game',
+  'canceled_game',
+  'abnormal_dispersion',
+] as const;
+export type EvidenceReasonCode = (typeof EVIDENCE_REASON_CODES)[number];
+
+/**
+ * Reason codes in the §E.1 vocabulary that are RESERVED per DR-27 / §I.3
+ * clause (2) and MUST NOT be emitted by an `evidence_method_v1` writer.
+ * The V1-A1-3 engine + V1-A1-4 template writer MUST refuse to attach any
+ * value in this set.
+ */
+export const EVIDENCE_RESERVED_REASON_CODES: ReadonlySet<EvidenceReasonCode> =
+  new Set<EvidenceReasonCode>(['abnormal_dispersion']);
+
+export const EVIDENCE_REASON_CATEGORIES = [
+  'support',
+  'contradiction',
+  'quality',
+] as const;
+export type EvidenceReasonCategory = (typeof EVIDENCE_REASON_CATEGORIES)[number];

@@ -594,4 +594,244 @@ describe('supabase migrations — shape lint', () => {
       /slice_coverage_state\s+IN\s*\(\s*'complete'\s*,\s*'no_coverage_available'\s*\)/i
     );
   });
+
+  // -------------------------------------------------------------------------
+  // V1-A1-2 additions (evidence-profile storage)
+  // -------------------------------------------------------------------------
+
+  it('V1-A1-2: all evidence enum types declared in the evidence enums migration', () => {
+    const s = read('20260714000000_evidence_enums.sql');
+    const required = [
+      'CREATE TYPE evidence_classification',
+      'CREATE TYPE evidence_direction',
+      'CREATE TYPE evidence_evaluated_source_kind',
+      'CREATE TYPE evidence_quality_cap_reason',
+      'CREATE TYPE evidence_one_sided_state',
+      'CREATE TYPE evidence_reason_code',
+      'CREATE TYPE evidence_reason_category',
+    ];
+    for (const stanza of required) {
+      assert.ok(s.includes(stanza), `missing: ${stanza}`);
+    }
+  });
+
+  it('V1-A1-2: evidence_classification is the fixed GD-15 seven-value taxonomy — no extras, no omissions', () => {
+    const s = read('20260714000000_evidence_enums.sql');
+    const required = [
+      "'strong_over_evidence'",
+      "'moderate_over_evidence'",
+      "'mixed_evidence'",
+      "'moderate_under_evidence'",
+      "'strong_under_evidence'",
+      "'insufficient_evidence'",
+      "'unavailable'",
+    ];
+    for (const v of required) {
+      assert.ok(s.includes(v), `missing classification enum value: ${v}`);
+    }
+    // The classification enum block MUST contain exactly seven quoted values.
+    const block = s.match(
+      /CREATE TYPE evidence_classification AS ENUM\s*\(([^)]+)\)/
+    );
+    assert.ok(block, 'evidence_classification enum block not found');
+    const body = block![1] ?? '';
+    const quotes = body.match(/'[a-z_]+'/g) ?? [];
+    assert.equal(
+      quotes.length,
+      7,
+      `evidence_classification MUST have exactly 7 values (GD-15); found ${quotes.length}`
+    );
+  });
+
+  it('V1-A1-2: evidence_reason_code includes RESERVED abnormal_dispersion with an inline RESERVED comment', () => {
+    const s = read('20260714000000_evidence_enums.sql');
+    assert.match(s, /'abnormal_dispersion'/);
+    // The RESERVED reservation MUST be visible in the migration text so a
+    // future reader inspecting the schema sees the DR-27 deferral.
+    assert.match(s, /RESERVED/);
+    assert.match(s, /DR-27/);
+    assert.match(s, /evidence_method_v1/);
+  });
+
+  it('V1-A1-2: evidence_reason_code carries every §E.1 closed-vocabulary code', () => {
+    const s = read('20260714000000_evidence_enums.sql');
+    const required = [
+      'window_agreement_support',
+      'favorable_consensus_difference',
+      'positive_margin_support',
+      'unfavorable_consensus_difference',
+      'negative_margin_support',
+      'margin_measures_disagree',
+      'market_disagrees_with_history',
+      'windows_disagree',
+      'stale_current_market',
+      'insufficient_book_coverage',
+      'push_heavy_sample',
+      'one_sided_offering',
+      'source_unavailable',
+      'insufficient_l10_sample',
+      'incomplete_historical_coverage',
+      'unresolved_player_mapping',
+      'unresolved_event_mapping',
+      'no_current_market',
+      'postponed_game',
+      'canceled_game',
+      'abnormal_dispersion',
+    ];
+    for (const v of required) {
+      assert.ok(s.includes(`'${v}'`), `missing reason_code enum value: ${v}`);
+    }
+  });
+
+  it('V1-A1-2: evidence_profiles UNIQUE includes method_version AND computation_version (V1-5 recomputation lesson)', () => {
+    const s = read('20260714000001_evidence_profiles.sql');
+    assert.match(
+      s,
+      /CONSTRAINT\s+evidence_profiles_grain_version_unique\s+UNIQUE\s*\(\s*internal_game_id\s*,\s*internal_player_id\s*,\s*market_key\s*,\s*method_version\s*,\s*computation_version\s*\)/i
+    );
+  });
+
+  it('V1-A1-2: evidence_profiles classification-direction CHECK admits every legitimate pairing', () => {
+    const s = read('20260714000001_evidence_profiles.sql');
+    // Over pairings: Strong Over + Moderate Over.
+    assert.match(
+      s,
+      /classification\s+IN\s*\(\s*'strong_over_evidence'\s*,\s*'moderate_over_evidence'\s*\)\s+AND\s+direction\s*=\s*'over'/i
+    );
+    // Under pairings: Strong Under + Moderate Under.
+    assert.match(
+      s,
+      /classification\s+IN\s*\(\s*'strong_under_evidence'\s*,\s*'moderate_under_evidence'\s*\)\s+AND\s+direction\s*=\s*'under'/i
+    );
+    // Directionless pairings: Mixed + Insufficient + Unavailable.
+    assert.match(
+      s,
+      /classification\s+IN\s*\(\s*'mixed_evidence'\s*,\s*'insufficient_evidence'\s*,\s*'unavailable'\s*\)\s+AND\s+direction\s+IS\s+NULL/i
+    );
+  });
+
+  it('V1-A1-2: evidence_profiles evaluated_line CHECK admits NULL only when classification = unavailable', () => {
+    const s = read('20260714000001_evidence_profiles.sql');
+    assert.match(
+      s,
+      /classification\s*=\s*'unavailable'\s+OR\s*\(\s*evaluated_line\s+IS\s+NOT\s+NULL\s+AND\s+evaluated_source_kind\s+IS\s+NOT\s+NULL\s*\)/i
+    );
+  });
+
+  it('V1-A1-2: evidence_profiles quality_capped ↔ quality_cap_reason are paired', () => {
+    const s = read('20260714000001_evidence_profiles.sql');
+    assert.match(
+      s,
+      /quality_capped\s*=\s*false\s+AND\s+quality_cap_reason\s*=\s*'none'/i
+    );
+    assert.match(
+      s,
+      /quality_capped\s*=\s*true\s+AND\s+quality_cap_reason\s*<>\s*'none'/i
+    );
+  });
+
+  it('V1-A1-2: evidence_profiles composite_score and each component clamp to [-1, +1]', () => {
+    const s = read('20260714000001_evidence_profiles.sql');
+    assert.match(s, /composite_score\s+IS\s+NULL\s+OR\s*\(\s*composite_score\s*>=\s*-1\s+AND\s+composite_score\s*<=\s*1\s*\)/i);
+    for (const col of ['c_rtp', 'c_ms', 'c_wa', 'c_ma']) {
+      const re = new RegExp(
+        `${col}\\s+IS\\s+NULL\\s+OR\\s*\\(\\s*${col}\\s*>=\\s*-1\\s+AND\\s+${col}\\s*<=\\s*1\\s*\\)`,
+        'i'
+      );
+      assert.match(s, re, `missing clamp CHECK for ${col}`);
+    }
+  });
+
+  it('V1-A1-2: evidence_profiles preserves includes_backfilled_historical per DR-23', () => {
+    const s = read('20260714000001_evidence_profiles.sql');
+    assert.match(
+      s,
+      /includes_backfilled_historical\s+boolean\s+NOT NULL/i
+    );
+    // DR-23 (e) is a WRITER rule ("NO automatic quality cap is applied
+    // solely for backfilled provenance") — enforced by the engine, not by
+    // schema. The COMMENT documents the linkage.
+    assert.match(s, /DR-23/);
+  });
+
+  it('V1-A1-2: evidence_profiles stores method_version and computation_version as reproducibility anchors', () => {
+    const s = read('20260714000001_evidence_profiles.sql');
+    assert.match(s, /method_version\s+text\s+NOT NULL/i);
+    assert.match(s, /computation_version\s+integer\s+NOT NULL/i);
+    // DR-24 documented; hard-coded value NOT enforced by CHECK (bumps are
+    // additive per DR-24 — writer sets the value).
+    assert.match(s, /DR-24/);
+    assert.match(s, /evidence_method_v1/);
+  });
+
+  it('V1-A1-2: evidence_profiles source_read_model_computation_version is distinct from evidence-profile computation_version', () => {
+    const s = read('20260714000001_evidence_profiles.sql');
+    assert.match(
+      s,
+      /source_read_model_computation_version\s+integer\s+NOT NULL/i
+    );
+    assert.match(s, /source_read_model_computation_version\s*>=\s*1/i);
+  });
+
+  it('V1-A1-2: evidence_profiles references CurrentMarketRow + availability snapshot (both nullable)', () => {
+    const s = read('20260714000001_evidence_profiles.sql');
+    assert.match(
+      s,
+      /current_market_row_id\s+uuid\s+REFERENCES\s+current_market_rows\(current_market_row_id\)/i
+    );
+    assert.match(
+      s,
+      /bdl_availability_snapshot_id\s+uuid\s+REFERENCES\s+bdl_availability_snapshots\(bdl_availability_snapshot_id\)/i
+    );
+  });
+
+  it('V1-A1-2: evidence_profile_reasons has a version-blind UNIQUE per (profile, reason_code) — one trigger per code per profile', () => {
+    const s = read('20260714000002_evidence_profile_reasons.sql');
+    assert.match(
+      s,
+      /UNIQUE\s*\(\s*evidence_profile_id\s*,\s*reason_code\s*\)/i
+    );
+  });
+
+  it('V1-A1-2: evidence_profile_reasons enforces DR-26 total order via UNIQUE (profile, category, rank)', () => {
+    const s = read('20260714000002_evidence_profile_reasons.sql');
+    assert.match(
+      s,
+      /UNIQUE\s*\(\s*evidence_profile_id\s*,\s*category\s*,\s*intra_category_rank\s*\)/i
+    );
+    assert.match(s, /intra_category_rank\s*>=\s*1/i);
+  });
+
+  it('V1-A1-2: evidence_profile_reasons contribution_magnitude clamps to [-1, +1] when non-null', () => {
+    const s = read('20260714000002_evidence_profile_reasons.sql');
+    assert.match(
+      s,
+      /contribution_magnitude\s+IS\s+NULL\s+OR\s*\(\s*contribution_magnitude\s*>=\s*-1\s+AND\s+contribution_magnitude\s*<=\s*1\s*\)/i
+    );
+  });
+
+  it('V1-A1-2: evidence_profile_reasons cascades on profile delete so a version bump does not orphan reasons', () => {
+    const s = read('20260714000002_evidence_profile_reasons.sql');
+    assert.match(
+      s,
+      /REFERENCES\s+evidence_profiles\(evidence_profile_id\)\s+ON\s+UPDATE\s+RESTRICT\s+ON\s+DELETE\s+CASCADE/i
+    );
+  });
+
+  it('V1-A1-2: the writer conflict strategy is documented in the evidence_profiles migration header', () => {
+    const s = read('20260714000001_evidence_profiles.sql');
+    // Documented strategy: same-version UPSERT on the version-aware
+    // UNIQUE; version-bump = new row alongside prior versions.
+    assert.match(s, /Future-writer conflict strategy/);
+    assert.match(s, /evidence_profiles_grain_version_unique/);
+    assert.match(s, /ON CONFLICT/);
+    assert.match(s, /IMMUTABLE/i);
+  });
+
+  it('V1-A1-2: grain-question decision is documented prominently in the evidence_profiles migration header', () => {
+    const s = read('20260714000001_evidence_profiles.sql');
+    assert.match(s, /Grain question/);
+    assert.match(s, /governor decision/i);
+    assert.match(s, /evaluated_line/);
+  });
 });
