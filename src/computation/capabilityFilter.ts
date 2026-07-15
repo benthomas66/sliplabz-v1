@@ -13,17 +13,29 @@
 // the filter shape here does not need to change.
 
 import { hasCapability, type Capability } from './capability.js';
-import type { CurrentMarketRow, ThresholdWindowResult, RealLineWindowResult } from './types.js';
+import { methodVersionOf } from './computationVersion.js';
+import type {
+  CurrentMarketRow,
+  OneSidedOfferingKind,
+  ThresholdWindowResult,
+  RealLineWindowResult,
+} from './types.js';
 
 /** The redacted `BookDetailResult` shape returned when the caller lacks
  *  `view_book_detail`. Preserves the method_version so the client can see
- *  the field exists and its version is coherent. */
-const REDACTED_BOOK_DETAIL = Object.freeze({
-  offerings: Object.freeze([]) as ReadonlyArray<never>,
-  method_version: 1,
-  redacted: true as const,
-  redaction_reason: 'capability_view_book_detail_required' as const,
-});
+ *  the field exists and its version is coherent. `one_sided` remains
+ *  visible on redaction because it is truth-about-availability per §16.8
+ *  ("truth is never paywalled") and V1-A1-3 §C.7 depends on it. */
+function makeRedactedBookDetail(one_sided: OneSidedOfferingKind | null) {
+  return Object.freeze({
+    offerings: Object.freeze([]) as ReadonlyArray<never>,
+    one_sided,
+    method_version: methodVersionOf('book_detail'),
+    redacted: true as const,
+    redaction_reason: 'capability_view_book_detail_required' as const,
+  });
+}
+type RedactedBookDetail = ReturnType<typeof makeRedactedBookDetail>;
 
 /** The redacted `AvailabilityContextResult` shape returned when the caller
  *  lacks `view_availability_context`. Preserves method_version. */
@@ -51,7 +63,7 @@ export interface FilteredCurrentMarketRow {
     | CurrentMarketRow['movement_summary']
     | { readonly redacted: true; readonly redaction_reason: string; readonly method_version: number };
   readonly freshness: CurrentMarketRow['freshness'];
-  readonly book_detail: CurrentMarketRow['book_detail'] | typeof REDACTED_BOOK_DETAIL;
+  readonly book_detail: CurrentMarketRow['book_detail'] | RedactedBookDetail;
   readonly availability_context:
     | CurrentMarketRow['availability_context']
     | typeof REDACTED_AVAILABILITY
@@ -95,7 +107,9 @@ export function filterCurrentMarketRow(
     // stream through THIS row (that's a different surface).
     movement_summary: canViewFullMovement ? row.movement_summary : row.movement_summary,
     freshness: row.freshness,
-    book_detail: canViewBookDetail ? row.book_detail : REDACTED_BOOK_DETAIL,
+    book_detail: canViewBookDetail
+      ? row.book_detail
+      : makeRedactedBookDetail(row.book_detail.one_sided),
     availability_context: row.availability_context === null
       ? null
       : canViewAvailability ? row.availability_context : REDACTED_AVAILABILITY,

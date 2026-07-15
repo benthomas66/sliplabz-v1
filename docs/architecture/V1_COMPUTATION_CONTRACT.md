@@ -30,12 +30,14 @@ under a different name, is a lint failure (see
 | first-observed consensus | `src/computation/firstObserved.ts` | 1 |
 | movement summary | `src/computation/movementSummary.ts` | 1 |
 | freshness | `src/computation/freshness.ts` | 1 |
-| per-book detail | `src/computation/bookDetail.ts` | 1 |
+| per-book detail (offerings + `one_sided` RME-3) | `src/computation/bookDetail.ts` | 2 |
 | availability context | `src/computation/availabilityContext.ts` | 1 |
 | real-line window (L5/L10/L20/season) | `src/computation/realLineWindows.ts` (wraps V1-4 `src/lines/realLineWindows.ts`) | 1 |
 | threshold window (A1 §9.2) | `src/computation/thresholdWindows.ts` | 1 |
 | averages / medians | `src/computation/averagesMedians.ts` | 1 |
 | sample-size label | `src/computation/averagesMedians.ts` (`computeSampleSizeLabel`) | 1 |
+| historical coverage (RME-1) | `src/computation/historicalCoverage.ts` | 1 |
+| mapping resolution (RME-2) | `src/computation/mappingResolution.ts` | 1 |
 
 A method-version change is a spec-authorized change to the formula (or
 a governor decision for internal metrics). Downgrades are never permitted.
@@ -132,6 +134,9 @@ whether `backfilled_historical` provenance rows are included:
 | threshold window (A1 §9.2) | **YES** — same policy; the result carries `includes_backfilled_historical`. | Line-relative calculations use the same underlying player-game stat sample. |
 | averages / medians | **YES** — same policy; the result carries `includes_backfilled_historical`. | Same. |
 | sample-size label | Reflects total `n` regardless of provenance. | Labels are truthful about sample size. |
+| historical coverage (RME-1) | **YES** — `HistoricalCoverageResult.coverage_start_date` reflects both `self_observed` and `backfilled_historical` rows in `historical_line_results`; the returned shape carries `includes_backfilled_historical: boolean` per EVIDENCE_PROFILE_METHOD_V1.md DR-23. | DR-23 mandates backfilled rows count toward the windows; coverage MUST reflect the same rows to keep the DR-25 30-day predicate honest. |
+| mapping resolution (RME-2) | N/A | Sourced from V1-1 identity queues, not from historical line data. |
+| book_detail one_sided (RME-3) | NEVER (current selection is `self_observed` only) | Grain-level summary over the CURRENT sportsbook offering set; historical rows are structurally excluded from current selection (§11.4). |
 
 **"Observed by SlipLabz since launch"** is a distinct product surface
 concept (V1-6 / V1-7 obligation). A consumer producing that view MUST
@@ -239,7 +244,103 @@ hardening obligation.
 
 ---
 
-## 9. What this document does not authorize
+## 9. V1-5x — Read-Model Extensions for the Evidence Engine
+
+Delivered by ticket V1-5x per `docs/product/EVIDENCE_PROFILE_METHOD_V1.md`
+§I.2 (V1-5x prerequisite ruling). Three read-model-owned inputs the
+evidence engine (V1-A1-3) will consume verbatim. Engine-side parallel
+derivation is FORBIDDEN by the single-owner invariant in §1.
+
+### RME-1 — `HistoricalCoverageResult`
+
+- **Owner:** `src/computation/historicalCoverage.ts`.
+- **Grain:** per (`internal_player_id`, `market_key`).
+- **Source of truth:** `historical_line_results` (`coverage_state IN ('complete', 'single_book')`,
+  latest `computation_version` per grain via `DISTINCT ON`) joined to
+  `games.scheduled_start_utc` for the observation date.
+- **Shape (see `src/computation/types.ts`):**
+  `{ internal_player_id, market_key, coverage_start_date: string | null,
+     eligible_game_count, includes_backfilled_historical, method_version,
+     computation_version }`.
+- **`coverage_start_date` type choice:** ISO-8601 date string
+  (`YYYY-MM-DD`, UTC-day). Chosen so the DR-25 30-day predicate
+  reduces to whole-day arithmetic — no timezone ambiguity, no timestamp
+  precision mismatches. Null when no eligible row exists.
+- **Backfilled stance (DR-23):** rows with
+  `provenance = 'backfilled_historical'` count toward coverage; the
+  returned shape's `includes_backfilled_historical` boolean surfaces that
+  stance visibly. This mirrors the read-model contract in §5 for
+  threshold windows and real-line windows.
+- **DR-25 predicate:** `satisfiesDR25ThirtyDayCoverage(coverage, today_utc_date)`
+  returns `(today - coverage_start_date) >= 30 days`; false when
+  `coverage_start_date === null`. A change to the 30-day threshold
+  requires a governor decision under DR-24.
+
+### RME-2 — `MappingResolutionResult`
+
+- **Owner:** `src/computation/mappingResolution.ts`.
+- **Grain:** per (`internal_player_id`, `internal_game_id`).
+- **Source of truth:** V1-1 identity queues
+  (`player_reconciliation_queue`, `event_reconciliation_queue`) filtered
+  to `resolution = 'open'` and matched by
+  `candidate_internal_player_ids` / `candidate_internal_game_ids`
+  containment. Reason vocabularies (`player_queue_reason`,
+  `event_queue_reason`) are reused verbatim — no parallel enum is
+  introduced.
+- **Shape (see `src/computation/types.ts`):**
+  `{ internal_player_id, internal_game_id, player_resolved: boolean,
+     event_resolved: boolean, queue_reason: string | null, method_version }`.
+- **`queue_reason` composition rule:** null when both are resolved;
+  otherwise the raw V1-1 enum value from the offending queue. When BOTH
+  are unresolved, the PLAYER queue's reason wins (EVIDENCE_PROFILE_METHOD_V1.md
+  §C.9 lists `UNRESOLVED_PLAYER_MAPPING` before `UNRESOLVED_EVENT_MAPPING`).
+  Both booleans remain independently visible so V1-A1-3 can attach both
+  `UNRESOLVED_PLAYER_MAPPING` and `UNRESOLVED_EVENT_MAPPING` if it
+  chooses.
+- **Read-only:** the reader is a `SELECT` pair — no `INSERT`, `UPDATE`,
+  `DELETE`, or advisory lock against the identity layer. V1-1 remains the
+  sole owner of writes to queues, `mapping_history`, and `provider_*`
+  tables (`V1_IDENTITY_CONTRACT.md`).
+
+### RME-3 — `BookDetailResult.one_sided`
+
+- **Owner:** `src/computation/bookDetail.ts` (extends the pre-existing
+  book-detail owner; method_version bumped `1 → 2`).
+- **Grain:** the (`internal_game_id`, `internal_player_id`, `market_key`)
+  grain already computed by `composeCurrentMarketRow`.
+- **Enum:** `'over_only' | 'under_only' | 'neither' | null` — exactly
+  the values named by EVIDENCE_PROFILE_METHOD_V1.md §A.4.
+- **Derivation:** grain-level scan over the eligible sportsbook
+  `CurrentOffering` set (V1-3 stores `over_price` / `under_price`
+  independently per offering row). `'over_only'` when at least one
+  Over quote exists and NO Under quote exists anywhere in the aggregate;
+  `'under_only'` symmetrically; `'neither'` when both sides appear;
+  `null` when the offering set is empty or no prices are non-null.
+  The missing side is NEVER fabricated.
+- **DR-18 satisfaction:** V1-A1-3 §C.7 reads
+  `book_detail.one_sided ∈ {'over_only', 'under_only'}` directly to
+  attach `ONE_SIDED_OFFERING`, clamp `C_MA := 0`, and cap the profile
+  at Moderate — no evaluated-point relativity is required at the read-
+  model boundary.
+- **Capability-filter behavior:** `book_detail.offerings` remains paid-
+  gated per `view_book_detail`. `book_detail.one_sided` is truth-about-
+  availability per §16.8 ("truth is never paywalled") and is preserved
+  on redaction — the redacted marker still carries the classification.
+
+### V1-5x — what this ticket does NOT change
+
+- No new migrations. The three fields derive from existing storage
+  (`historical_line_results`, `games`, `player_reconciliation_queue`,
+  `event_reconciliation_queue`, live `CurrentOffering[]`).
+- `current_market_rows` continues to store only the summary columns it
+  stored before V1-5x; `book_detail.one_sided` is recomputed by the
+  composer on demand (same design as `book_detail.offerings`).
+- No engine work, no evidence classifications, no reason-code emission.
+  V1-A1-3 remains a separate ticket.
+
+---
+
+## 10. What this document does not authorize
 
 Consistent with GD-1, GD-6, GD-9, and A1:
 

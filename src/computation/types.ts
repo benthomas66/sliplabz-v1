@@ -115,11 +115,30 @@ export interface FreshnessResult {
 }
 
 /**
+ * One-sided-offering classification per amendment §9.4 and DR-18.
+ * Grain-level summary across all eligible sportsbook offerings for the
+ * (game, player, market) grain:
+ *   - `'over_only'`  — at least one book quoted an Over price and NO book
+ *                     quoted an Under price anywhere for the grain.
+ *   - `'under_only'` — mirror image.
+ *   - `'neither'`    — both sides are quoted somewhere in the grain
+ *                     (i.e. the grain is NOT one-sided).
+ *   - `null`         — no eligible sportsbook offerings on the grain.
+ * Consumed directly by V1-A1-3 §C.7 to attach `ONE_SIDED_OFFERING` and
+ * clamp `C_MA := 0` per DR-18.
+ */
+export type OneSidedOfferingKind = 'over_only' | 'under_only' | 'neither';
+
+/**
  * Per-book detail (paid tier). Field-level capability control lives in the
  * capabilityFilter step.
+ *
+ * `one_sided` (RME-3) is a grain-level summary derived from `offerings` and
+ * is truth-about-availability; it is NEVER paywalled per §16.8.
  */
 export interface BookDetailResult {
   readonly offerings: ReadonlyArray<CurrentOffering>;
+  readonly one_sided: OneSidedOfferingKind | null;
   readonly method_version: number;
 }
 
@@ -219,6 +238,63 @@ export interface SampleSizeLabelResult {
   readonly eligible_n: number;
   readonly label: 'complete' | 'incomplete' | 'no_data';
   readonly requested_n: number;
+  readonly method_version: number;
+}
+
+/**
+ * Historical coverage per (player, market_key) — RME-1.
+ *
+ * The earliest eligible historical observation date backing this profile's
+ * windows. Derived from `historical_line_results` (which per its schema
+ * comment only stores rows with a canonical closing point AND an eligible
+ * player_game_stats row). Includes `backfilled_historical` provenance rows
+ * per DR-23 (they count toward the profile's windows). The
+ * `includes_backfilled_historical` field makes the provenance stance
+ * visible on the returned shape.
+ *
+ * `coverage_start_date` is an ISO-8601 date string (YYYY-MM-DD, UTC-day)
+ * derived from `games.scheduled_start_utc`. Never estimated; never derived
+ * from a season calendar. Null when no eligible historical row exists for
+ * the (player, market) grain.
+ *
+ * DR-25 predicate (30-day historical coverage): the engine evaluates
+ *   (today_utc_date - coverage_start_date) >= 30 days
+ * directly from this shape.
+ */
+export interface HistoricalCoverageResult {
+  readonly internal_player_id: string;
+  readonly market_key: string;
+  readonly coverage_start_date: string | null;
+  readonly eligible_game_count: number;
+  readonly includes_backfilled_historical: boolean;
+  readonly method_version: number;
+  readonly computation_version: number;
+}
+
+/**
+ * Player + event mapping resolution snapshot — RME-2.
+ *
+ * Read-only view of the V1-1 identity layer's open reconciliation queues.
+ * `player_resolved = false` when `player_reconciliation_queue` has an OPEN
+ * row that either references this `internal_player_id` in
+ * `candidate_internal_player_ids` OR whose approval would create/remap this
+ * identity. `event_resolved` analogous for `event_reconciliation_queue` and
+ * `internal_game_id`. `queue_reason` carries the raw V1-1 queue-reason
+ * enum value (either `player_queue_reason` or `event_queue_reason`) —
+ * never a parallel vocabulary. Null when both are resolved. When BOTH are
+ * unresolved simultaneously, `queue_reason` reflects the PLAYER queue's
+ * reason (§C.9 checks `UNRESOLVED_PLAYER_MAPPING` first); `player_resolved`
+ * and `event_resolved` remain independently visible.
+ *
+ * This module never writes, approves, or quarantines — the identity layer
+ * (V1-1) owns those actions.
+ */
+export interface MappingResolutionResult {
+  readonly internal_player_id: string;
+  readonly internal_game_id: string;
+  readonly player_resolved: boolean;
+  readonly event_resolved: boolean;
+  readonly queue_reason: string | null;
   readonly method_version: number;
 }
 

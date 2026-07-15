@@ -22,7 +22,9 @@ export const METHOD_VERSIONS = Object.freeze({
   first_observed_consensus: 1,
   movement_summary: 1,
   freshness: 1,
-  book_detail: 1,
+  // book_detail bumped 1→2 by V1-5x: `BookDetailResult` now carries the
+  // grain-level `one_sided` summary consumed by V1-A1-3 §C.7 / DR-18.
+  book_detail: 2,
   availability_context: 1,
   real_line_window: 1,
   threshold_window: 1,
@@ -30,6 +32,10 @@ export const METHOD_VERSIONS = Object.freeze({
   median_stat: 1,
   sample_size_label: 1,
   current_market_row: 1,
+  // V1-5x additions — the three read-model extensions required by
+  // EVIDENCE_PROFILE_METHOD_V1.md §I.2 before V1-A1-3 can begin.
+  historical_coverage: 1,
+  mapping_resolution: 1,
 });
 
 export type MetricName = keyof typeof METHOD_VERSIONS;
