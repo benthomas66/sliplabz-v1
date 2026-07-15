@@ -327,3 +327,455 @@ Exactly four untracked files: the two pre-existing calibration files from the pr
 ---
 
 HALTED after V1-4c Phase A. Nothing committed. Historical results population has not begun and will not begin without governor authorization.
+
+---
+
+# V1-4c Ticket Report — Historical Line Results Population and Calibration Re-run (PHASE B)
+
+**Kind:** src module + operator script + unit + integration tests + hosted populator run + calibration re-run + report append.
+**Starting HEAD:** `7d8af5500f46b78b7d4640483dc4df50d39252cd` — `feat: historical player stats backfill (V1-4c Phase A)`. HEAD `e6a4a31` (V1-A1-2) in history.
+**Branch:** `main`. Worktree clean apart from the two orphan calibration files (untracked; mine to update this phase).
+
+## Governance decisions in effect (recorded verbatim per ticket)
+
+- **ZERO provider calls this phase.** No Odds API. No BALLDONTLIE. Every input is already in the hosted database. `scripts/v1_4c_phase_b_populate.ts` imports NO `src/odds/*` or `src/bdl/httpClient` module.
+- **Writes go to the HOSTED Supabase database.**
+- **Governor ruling carried forward from Phase A:** retro-emitting `recomputation_invalidations` for initial stat landings (Phase A §D.4 Option B) is REJECTED. **Option A — a dedicated first-pass populator reusing the existing `computeHistoricalLineResult` primitive — is APPROVED as the design.** This phase implements Option A.
+- Agent B has finished and committed. Sole agent in the repository now.
+
+---
+
+## B1. Design answer first — quoted lines from the calibration script and method §A
+
+### (a) Tables the calibration script reads, and which must be populated for `data_gap.present` to become false
+
+From `scripts/v1_a1_1_dr14_dr27_calibration.ts`:
+
+- **Data-availability probe** (lines 99–129): reads `historical_line_results`, `canonical_closing_points`, `player_game_stats`, `real_line_windows`, plus per-market breakdowns of the first two.
+- **DR-14 PART 1 query** (lines 164–213): reads `historical_line_results` only (via a `DISTINCT ON` CTE over the latest-computation-version per grain, filtered to `coverage_state IN ('complete','single_book')` and `market_key = $1`).
+- **DR-27 PART 2 query** (`loadProfileStddevs`, lines 256–317): reads `historical_line_results` joined to `games` (on `internal_game_id` for `scheduled_start_utc` ordering).
+- **`estimateWouldBeStrongCapped`** (lines 362–394): reads `current_market_rows` (existence probe only — see §2.4 in the calibration report).
+- **`loadPlayerDisplayNames`** (lines 498–503): reads `players`.
+
+**For `data_gap.present` to become false:** only `historical_line_results` matters. Direct quote from line 538:
+
+```ts
+const dataGapPresent = availability.historical_line_results === 0;
+```
+
+Populating `historical_line_results` (this phase's job) closes the gap. All the other tables the script reads are already populated: `canonical_closing_points` (4,955 seeded), `player_game_stats` (4,194 from Phase A), `games`, `players`, `market_registry`. `real_line_windows` is probed but not consumed for output.
+
+### (b) Does the calibration require `real_line_windows` to be populated? Quote the script.
+
+**No.** The DR-27 L10 margin stddev is derived directly from `historical_line_results` ordered by game date. Quoting `loadProfileStddevs` verbatim (lines 264–296):
+
+```ts
+const q = await pool.query(
+  `WITH latest AS (
+     SELECT DISTINCT ON (internal_game_id, internal_player_id, market_key)
+            internal_game_id, internal_player_id, market_key,
+            margin::float8 AS margin, canonical_closing_point::float8 AS ccp,
+            computation_version
+       FROM historical_line_results
+      WHERE coverage_state IN ('complete','single_book')
+        AND market_key = $1
+      ORDER BY internal_game_id, internal_player_id, market_key,
+               computation_version DESC, computed_at DESC
+   ),
+   dated AS (
+     SELECT l.internal_player_id, l.internal_game_id, l.margin, l.ccp,
+            g.scheduled_start_utc,
+            ROW_NUMBER() OVER (
+              PARTITION BY l.internal_player_id
+              ORDER BY g.scheduled_start_utc DESC
+            ) AS rn
+       FROM latest l
+       JOIN games g ON g.internal_game_id = l.internal_game_id
+   )
+   SELECT internal_player_id::text AS internal_player_id,
+          ARRAY_AGG(internal_game_id::text ORDER BY scheduled_start_utc DESC) AS gids,
+          ARRAY_AGG(margin ORDER BY scheduled_start_utc DESC) AS margins,
+          MAX(scheduled_start_utc) AS latest_start,
+          (ARRAY_AGG(ccp ORDER BY scheduled_start_utc DESC))[1] AS latest_ccp
+     FROM dated
+    WHERE rn <= 10
+    GROUP BY internal_player_id
+    HAVING COUNT(*) >= 5`, // per DR-6 minimum L10 eligibility
+  [market]
+);
+```
+
+Population stddev is then computed in TypeScript from that margin array — no `real_line_windows` query anywhere in the calibration output path.
+
+### (c) Will the V1-A1-3 evidence engine require `real_line_windows` to be populated? Is there a committed driver that populates them outside the correction path?
+
+**Separate question, for report only:** The engine's binding table in EVIDENCE_PROFILE_METHOD_V1.md §A.1 is `ThresholdWindowResult` from `src/computation/thresholdWindows.ts::computeThresholdWindow(window_type, threshold, games)` — computed **on demand** from a games list, not persisted. §A.1 does not list `real_line_windows` as a binding. §A.2 line-relative production also binds to `ThresholdWindowResult` fields, not to `real_line_windows`.
+
+Therefore the V1-A1-3 engine, as bound in the method authority, **does NOT require `real_line_windows` to be persisted for its own computation.**
+
+**Is there a committed driver that populates `real_line_windows` outside the correction path?** No. The V1-5 `recomputationWriter` is the sole committed writer for `real_line_windows`; it is invalidation-driven and does not run against initial stat landings (same argument as Phase A §A for `historical_line_results`). This is a **second gap** — parallel in structure to the first — but its consumer set is smaller (Brief / Board read-model surfaces per `V1_COMPUTATION_CONTRACT.md §1`, not the evidence engine).
+
+**Gap name (for governor tracking):** *"initial-population of `real_line_windows` outside the correction path"*. Follow-up owner suggestion: whichever ticket first surfaces a consumer that reads `real_line_windows` at scale (candidate: V1-6 Brief / Board window aggregates) owns building the first-pass populator, mirroring the Option A pattern established here. **This phase does NOT build it** — per B1 (b) it is unnecessary for the calibration and per (c) unnecessary for V1-A1-3.
+
+### (d) Reference-date policy
+
+**Not applicable.** (b) says calibration does not need `real_line_windows` populated; (c) says the engine does not either. This phase does not populate `real_line_windows`, so no reference-date policy is invoked.
+
+**HARD GATE (no new migrations required):** the populator writes only to `historical_line_results`. No new migration, no schema change, no new table. The gate passes.
+
+---
+
+## B2. Populator built
+
+**Files added:**
+
+- `src/lines/historicalLineResultsBackfill.ts` (~430 lines) — the populator library.
+- `scripts/v1_4c_phase_b_populate.ts` (~200 lines) — thin operator script.
+- `tests/lines/historicalLineResultsBackfill.test.ts` — unit tests for pure helpers.
+- `tests/integration/v1_4c_phase_b_backfill.integration.test.ts` — 5 live-Postgres integration tests.
+
+### B2.1 Reuse discipline
+
+- **Reuses `src/lines/historicalLineResult.ts::computeHistoricalLineResult`.** No parallel margin / outcome / push / coverage math. One owner per metric.
+- Reuses `src/computation/computationVersion.ts::V1_5_COMPUTATION_VERSION`.
+- The eligibility SQL is exported as a named constant `HISTORICAL_LINE_RESULTS_BACKFILL_ELIGIBILITY_SQL` and quoted verbatim by the operator script's preflight probe — no string drift between the populator's scan and the preflight report.
+
+### B2.2 Version-aware UPSERT
+
+The `INSERT INTO historical_line_results` clause matches `recomputationWriter`'s shape line-for-line, targeting the same `historical_line_results_grain_version_unique` constraint and restricting `DO UPDATE SET` to exactly the recomputable columns (never method_version, computation_version, or the identity columns). The exact clause used:
+
+```
+INSERT INTO historical_line_results
+  (…identity + derived columns…, computation_version, computed_at)
+VALUES (…, $13, now())
+ON CONFLICT ON CONSTRAINT historical_line_results_grain_version_unique
+DO UPDATE SET
+  canonical_closing_point_id = EXCLUDED.canonical_closing_point_id,
+  canonical_closing_point    = EXCLUDED.canonical_closing_point,
+  player_game_stat_id        = EXCLUDED.player_game_stat_id,
+  player_stat_key            = EXCLUDED.player_stat_key,
+  player_stat_value          = EXCLUDED.player_stat_value,
+  outcome                    = EXCLUDED.outcome,
+  margin                     = EXCLUDED.margin,
+  coverage_state             = EXCLUDED.coverage_state,
+  computed_at                = now(),
+  updated_at                 = now()
+RETURNING (xmax = 0) AS inserted
+```
+
+**Never `ON CONFLICT DO NOTHING`.** The V1-5 anti-pattern is impossible here by construction.
+
+### B2.3 rowCount verification
+
+Every UPSERT verifies `rowCount === 1` and throws (rolling back the batch) on mismatch. Counter values (`rows_inserted` vs `rows_updated`) come from `RETURNING (xmax = 0)`, distinguishing the two paths — insert vs update — from a single statement.
+
+### B2.4 Transactional batches + fresh-client-per-batch
+
+- Batch size: **500 grains** per transaction (`DEFAULT_BATCH_SIZE`).
+- `withFreshClientRetry`: opens a brand-new `pg.Client` (with statement_timeout=30s + SSL) per batch. `client.end()` in finally. Retries up to 3 times on connection-class errors only (`ECONNRESET`, `ETIMEDOUT`, `ECONNREFUSED`, `EPIPE`, `Connection terminated`, `Client has encountered a connection error and is not queryable`). No pooled client held idle. No global `uncaughtException` handler.
+- Batch-cursor sanity check: throws defensively if the cursor fails to advance despite the batch being full — no infinite-loop hazard.
+
+### B2.5 Idempotence & resumability
+
+Idempotent by the `historical_line_results_grain_version_unique` UNIQUE + the version-aware UPSERT: a second run at the same `V1_5_COMPUTATION_VERSION` UPDATES rather than INSERTS, with identical derived-column values. Timestamps update; derived values do not. `computation_version` never advances on a re-run.
+
+### B2.6 Eligibility filter
+
+Exported `HISTORICAL_LINE_RESULTS_BACKFILL_ELIGIBILITY_SQL`:
+
+```
+ccp.canonical_closing_point IS NOT NULL
+AND ccp.selection_method IN ('single_book', 'unique_modal')
+AND ccp.coverage_label   IN ('single_book', 'complete')
+AND pgs.eligibility_state = 'eligible'
+```
+
+This is identical to Phase A §C.2's filter and to `recomputationWriter::recomputeHistoricalForGamePlayer`. Ineligible grains are ABSENT from the output — never defaulted, never relabeled to dodge the schema CHECK.
+
+### B2.7 Provenance
+
+Rows are written with `provenance = 'backfilled_historical'`. The V1-4b CHECK-widening migration `20260711150000_...` admits this value. No CHECK is weakened. `recomputationWriter` hard-codes `'self_observed'` because it handles CURRENT-poll corrections; this populator hard-codes `'backfilled_historical'` because it handles the seeded closing lines. Both are truthful.
+
+### B2.8 Pushes
+
+`computeHistoricalLineResult` owns the push classification (`margin === 0 → push`). This populator never touches it.
+
+---
+
+## B3. Run against the hosted database — actual outcome vs expected
+
+**Preflight probe** (read-only) — captured 2026-07-15T19:44:23Z:
+
+```
+historical_line_results (before):        0
+player_game_stats:                    4194
+canonical_closing_points:             4955
+recomputation_invalidations:             0
+observed_line_lifecycle:                 0
+movement_events:                         0
+eligible-grain count (per populator SQL):
+  player_assists   872
+  player_points   1524
+  player_rebounds 1301
+  player_threes    961
+  TOTAL           4658
+```
+
+**Run 1** (2026-07-15T19:44:23Z → 19:52:57Z, 8 min 34 sec):
+
+```json
+{
+  "grains_observed": 4658,
+  "grains_skipped_missing_stat": 0,
+  "rows_inserted": 4658,
+  "rows_updated": 0,
+  "batches_ok": 10,
+  "batches_retried": 0,
+  "rows_per_market": {
+    "player_assists": 872,
+    "player_rebounds": 1301,
+    "player_threes": 961,
+    "player_points": 1524
+  }
+}
+```
+
+**Total 4658 = expected 4658.** Per-market exact match: points 1524, rebounds 1301, assists 872, threes 961. No divergence. Zero connection-class retries. Zero grains skipped for missing normalized stat (V1-2 null-to-zero on eligible played rows meant every eligible grain had a finite stat value at the canonical stat key).
+
+---
+
+## B4. Verification (hosted, read-only)
+
+All queries wrapped in `BEGIN READ ONLY … ROLLBACK`. Nothing written during verification.
+
+### B4.1 Row counts total + per market
+
+```sql
+SELECT COUNT(*)::int FROM historical_line_results;
+-- 4658
+
+SELECT market_key, COUNT(*)::int FROM historical_line_results GROUP BY market_key ORDER BY market_key;
+-- player_assists 872, player_points 1524, player_rebounds 1301, player_threes 961
+```
+
+Exact match with the expected 4658 / (1524, 1301, 872, 961).
+
+### B4.2 Idempotency proof — checksum + version stability
+
+**Derived-column checksum** (excludes timestamps deliberately) computed BEFORE re-run:
+
+```
+c44b1f157c451e643a46a741a2fe7563
+```
+
+**Second populator run** (2026-07-15T19:56:03Z → 20:03:58Z, 7 min 55 sec):
+
+```json
+{
+  "grains_observed": 4658,
+  "grains_skipped_missing_stat": 0,
+  "rows_inserted": 0,
+  "rows_updated": 4658,
+  "batches_ok": 10,
+  "batches_retried": 0
+}
+```
+
+**0 inserts / 4658 updates** — the version-aware UPSERT correctly hit `DO UPDATE SET`, not the INSERT branch. **Checksum after re-run:**
+
+```
+c44b1f157c451e643a46a741a2fe7563   ← identical
+```
+
+**Distinct `computation_version` values across all rows:** `3` (before and after) — the V1-5 canonical constant, unchanged. computation_version did NOT advance. **Idempotency proven.**
+
+### B4.3 Ten hand-checked spot rows
+
+Query joined `historical_line_results` → `players` → `market_registry` → `player_game_stats`, ordered by market then player then game, LIMIT 10. Every row's `stored_margin == recomputed(stat - line)` and every `stored_outcome == expected_outcome(margin sign)`. All ten rows: `match: true`. Sample:
+
+| Market | Player | Line | Stat | Stored margin | Stored outcome | Coverage | Provenance | cv |
+|---|---|---:|---:|---:|---|---|---|---:|
+| player_assists | Kelsey Mitchell | 2.50 | 3 | 0.50  | over  | complete    | backfilled_historical | 3 |
+| player_assists | Kelsey Mitchell | 2.50 | 1 | -1.50 | under | single_book | backfilled_historical | 3 |
+| player_assists | Kelsey Mitchell | 2.50 | 2 | -0.50 | under | complete    | backfilled_historical | 3 |
+| player_assists | Kelsey Mitchell | 3.50 | 4 | 0.50  | over  | complete    | backfilled_historical | 3 |
+| player_assists | Kelsey Mitchell | 2.50 | 6 | 3.50  | over  | complete    | backfilled_historical | 3 |
+| player_assists | Kelsey Mitchell | 3.50 | 2 | -1.50 | under | complete    | backfilled_historical | 3 |
+| player_assists | Kelsey Mitchell | 2.50 | 3 | 0.50  | over  | complete    | backfilled_historical | 3 |
+| player_assists | Kelsey Mitchell | 2.50 | 3 | 0.50  | over  | single_book | backfilled_historical | 3 |
+| player_assists | Kelsey Mitchell | 2.50 | 2 | -0.50 | under | complete    | backfilled_historical | 3 |
+| player_assists | Kelsey Mitchell | 2.50 | 3 | 0.50  | over  | complete    | backfilled_historical | 3 |
+
+Arithmetic reproduced by hand: e.g. row 5, 6 assists − 2.50 line = 3.50 margin, sign +1 → over. Correct.
+
+### B4.4 Push rows
+
+`SELECT COUNT(*) FROM historical_line_results WHERE outcome='push';` → **0** — none exist.
+
+**Reason confirmed structurally:** `SELECT COUNT(*) FROM canonical_closing_points WHERE canonical_closing_point IS NOT NULL AND canonical_closing_point = ROUND(canonical_closing_point, 0);` → **0**. Every seeded canonical closing point is a half-point (like 15.5, 8.5, 4.5, 2.5). Player stats are integer counts. Therefore `stat − line` can NEVER equal zero on this dataset — a push outcome is structurally impossible. This is a truthful absence, not a populator omission.
+
+The integration test in `tests/integration/v1_4c_phase_b_backfill.integration.test.ts` DOES include a push-row test using an explicitly integer-valued line (game index 4 in the fixture — line 15, stat 15 → margin 0 → outcome 'push') to prove the populator's push classification works when the data admits it.
+
+### B4.5 CURRENT_ONLY_WHERE_CLAUSE zero-leak
+
+- `SELECT COUNT(*) FROM market_snapshots WHERE request_kind='current_poll' AND provenance <> 'self_observed';` → **0**.
+- `SELECT provenance, COUNT(*) FROM historical_line_results GROUP BY provenance;` → **4658 backfilled_historical, 0 self_observed**.
+
+No historical row is visible through current-selection filters. Structural isolation preserved.
+
+### B4.6 observed_line_lifecycle + movement_events + recomputation_invalidations still zero
+
+```
+observed_line_lifecycle:         0  (expected 0)
+movement_events:                 0  (expected 0)
+recomputation_invalidations:     0  (expected 0)
+```
+
+All three unchanged from pre-run. Populator did NOT create lifecycle state, did NOT emit movement events, did NOT retro-emit invalidations (governor ruling honored).
+
+### B4.7 Outcome distribution
+
+```
+over:  2125
+under: 2533
+push:     0
+```
+
+Sum: 4658 ✓.
+
+---
+
+## B5. Calibration re-run
+
+**Command:**
+
+```
+set -a && source .env && set +a
+node --import tsx scripts/v1_a1_1_dr14_dr27_calibration.ts > /tmp/v1_4c_phase_b_calibration.json
+```
+
+Exit code 0. Output size: 67 kB JSON. **`data_gap.present: false`** — the calibration ran mechanically as designed, populating every DR-14 and DR-27 section.
+
+The full regenerated report is at `docs/product/reports/V1_DR14_DR27_CALIBRATION.md`. Summary:
+
+**DR-14 clamp proportions:** points 31.10 %, rebounds 24.06 %, assists 32.11 %, threes **48.07 %**. Every market clears the "ordinary-margin dominance" flag (p75 ≥ M/2). `player_threes` has the highest clamp proportion; owner attention warranted on M_threes = 1.5.
+
+**DR-27 qualifying-sample size — with decisiveness commentary:**
+
+| Market | Qualifying players | Decisiveness |
+|---|---:|---|
+| player_points   | 98 | adequate |
+| player_rebounds | 85 | adequate |
+| player_assists  | 52 | **thin** |
+| player_threes   | 58 | **thin** |
+
+**Honestly:** this sample cannot decide K for `player_assists` or `player_threes` on its own. `player_points` and `player_rebounds` are decisive.
+
+**DR-27 cap proportions per K:**
+
+- `K = 1.5`: points 5.10 %, rebounds 1.18 %, assists 9.62 %, threes 3.45 %.
+- `K = 2.0`, `2.5`, `3.0`: **zero profiles capped across all four markets.**
+
+**would_be_strong_capped:** null for every (market, K). Reported as absence — composite score §B.6 requires current market rows + evaluated line not present in seed data. Per §I.1 "no estimation where data is absent."
+
+**Recommended K (one, labeled):** `K = 1.5`. Rationale: it is the only candidate that produces observable caps on this sample; K ≥ 2.0 makes DR-27 a dormant rule. Caveats: thin sample for assists / threes; owner may reasonably defer for those two markets until a larger sample is available. This is calibration EVIDENCE, not a governor decision — DR-27 remains formally deferred; the K choice is the owner's, routed through DR-24; `ABNORMAL_DISPERSION` remains RESERVED in `evidence_method_v1`.
+
+---
+
+## B6. Evidence
+
+### B6.1 Typecheck
+
+```
+$ npm run typecheck
+> tsc --noEmit
+(exit 0, no diagnostics)
+```
+
+### B6.2 Full unit suite (worktree quiet — sole agent)
+
+```
+$ npm test
+ℹ tests 529
+ℹ suites 88
+ℹ pass 458
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 71  (integration — no SLIPLABZ_DATABASE_URL for the unit run)
+```
+
+Growth over Phase A close: +6 unit tests (5 new V1-4c Phase B populator tests + Phase A's earlier growth). Prior baselines: V1-5 had 419, V1-A1-2 had 453, this run has 458.
+
+### B6.3 Integration suite (against a fresh local Docker Postgres `sliplabz-v1-4c-postgres:5432 → 55443`)
+
+```
+$ SLIPLABZ_DATABASE_URL="postgresql://postgres:postgres@localhost:55443/sliplabz_v1_4c_test" \
+    npm run test:integration
+ℹ tests 71
+ℹ suites 14
+ℹ pass 71
+ℹ fail 0
+```
+
+Growth: +5 integration tests over V1-A1-2 (66) — the five new populator probes:
+
+- happy path (4 markets × 5 games = 20, one ineligible game → 16 rows) + push classification + provenance + computation_version verification;
+- second-run no-op idempotency (checksum unchanged, computation_version stable);
+- dry_run BEGIN/ROLLBACK per batch — table stays at zero even though counters report 20;
+- absence-by-design — a missing canonical_closing_point row leaves its grain ABSENT;
+- only_market filter narrows correctly without leakage.
+
+### B6.4 Populator run output
+
+`/tmp/v1_4c_phase_b_run1.log` (first run, 4658 inserts / 0 updates) and `/tmp/v1_4c_phase_b_run2.log` (second run, 0 inserts / 4658 updates). Both exit 0.
+
+### B6.5 B4 verification SQL + results
+
+Recorded verbatim in §B4 above.
+
+### B6.6 Regenerated calibration report
+
+`docs/product/reports/V1_DR14_DR27_CALIBRATION.md` (replaces the prior data-gap version). Full JSON output for reproducibility: `/tmp/v1_4c_phase_b_calibration.json`.
+
+---
+
+## B7. Files touched — Phase B
+
+**Written by Phase B session (all on-manifest, none touching Phase A / Agent B / prior migrations):**
+
+- `src/lines/historicalLineResultsBackfill.ts` (new, ~430 lines) — populator library.
+- `scripts/v1_4c_phase_b_populate.ts` (new, ~200 lines) — operator script.
+- `tests/lines/historicalLineResultsBackfill.test.ts` (new) — unit tests.
+- `tests/integration/v1_4c_phase_b_backfill.integration.test.ts` (new) — integration tests.
+- `docs/product/reports/V1_DR14_DR27_CALIBRATION.md` (rewrote — this file is mine to update per the ticket's "those ARE yours to update in this phase").
+- `docs/product/reports/V1_TICKET_4C_REPORT.md` (appended Phase B section — Phase A content preserved verbatim).
+
+**Confirmed NOT modified by Phase B:**
+
+- `scripts/v1_a1_1_dr14_dr27_calibration.ts` — the calibration script itself. It's mine to update but nothing needed updating; it worked exactly as authored once `historical_line_results` was populated. Left byte-identical to its pre-Phase-B state.
+- `scripts/v1_4c_stats_backfill.ts` (Phase A committed) — untouched.
+- Any `src/shared/enums.ts`, any migration, `src/evidence/*`, `tests/evidence/*`, `tests/migrations/schemaShape.test.ts` (Agent B territory / already committed).
+- Any prior authority under `docs/product/` other than the two on-manifest ones.
+- Any `src/` module other than the one new file `src/lines/historicalLineResultsBackfill.ts`.
+
+---
+
+## B8. Final `git status --short`
+
+```
+ M docs/product/reports/V1_TICKET_4C_REPORT.md
+?? docs/product/reports/V1_DR14_DR27_CALIBRATION.md
+?? scripts/v1_4c_phase_b_populate.ts
+?? scripts/v1_a1_1_dr14_dr27_calibration.ts
+?? src/lines/historicalLineResultsBackfill.ts
+?? tests/integration/v1_4c_phase_b_backfill.integration.test.ts
+?? tests/lines/historicalLineResultsBackfill.test.ts
+```
+
+Two of the seven lines are the previously-orphan files (`docs/product/reports/V1_DR14_DR27_CALIBRATION.md` and `scripts/v1_a1_1_dr14_dr27_calibration.ts`). `V1_TICKET_4C_REPORT.md` shows as `M` because Phase A committed a version of it (this is my append). The calibration REPORT shows as `??` (not `M`) because it was never committed — Phase B rewrote the untracked file in place per the ticket's authorization ("those ARE yours to update in this phase"). The calibration SCRIPT `scripts/v1_a1_1_dr14_dr27_calibration.ts` remains untracked because I did not modify it — it worked exactly as authored once `historical_line_results` was populated.
+
+**Nothing staged. Nothing committed. Nothing pushed.**
+
+---
+
+HALTED after V1-4c Phase B. Nothing committed. Calibration evidence is ready for owner review; DR-27 has not been decided and the evidence engine has not begun.
