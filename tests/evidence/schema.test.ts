@@ -101,10 +101,32 @@ describe('V1-A1-2 evidence enums: TypeScript ⇔ Postgres identity', () => {
     );
   });
 
-  it('EVIDENCE_REASON_CODES mirrors the §E.1 closed-vocabulary SQL enum exactly', () => {
+  it('EVIDENCE_REASON_CODES mirrors the §E.1 closed-vocabulary SQL enum exactly — including the V1-A1-2a additive value', () => {
+    // V1-A1-3 hand-off from V1-A1-2a §6: the TS mirror now includes
+    // `no_unique_consensus_line`, which the ORIGINAL migration does not
+    // declare. Instead of asserting against the ORIGINAL migration alone,
+    // compute the effective vocabulary as the union of the original
+    // `CREATE TYPE` labels + the additive migration's `ADD VALUE`
+    // literals. The comprehensive verification of order + reservation
+    // lives in `tests/evidence/reasonVocabulary.test.ts`.
+    const originalLabels = readSqlEnumLabels('evidence_reason_code');
+    const additiveSql = readFileSync(
+      resolve(here, '../../supabase/migrations/20260715000000_evidence_reason_code_add_no_unique_consensus_line.sql'),
+      'utf8'
+    );
+    const additiveMatches = additiveSql.match(
+      /ALTER\s+TYPE\s+evidence_reason_code\s+ADD\s+VALUE(?:\s+IF\s+NOT\s+EXISTS)?\s+'([a-z0-9_]+)'/gi
+    ) ?? [];
+    const addedLabels = additiveMatches
+      .map((m) => m.match(/'([a-z0-9_]+)'/)?.[1])
+      .filter((s): s is string => typeof s === 'string');
+    // Effective vocabulary = original + added (both sets should be
+    // disjoint by construction).
+    const effective = [...originalLabels, ...addedLabels];
     assert.deepStrictEqual(
-      [...EVIDENCE_REASON_CODES],
-      readSqlEnumLabels('evidence_reason_code')
+      new Set([...EVIDENCE_REASON_CODES]),
+      new Set(effective),
+      'TS EVIDENCE_REASON_CODES set must equal the union of original + additive migrations'
     );
   });
 

@@ -449,6 +449,13 @@ export const EVIDENCE_REASON_CODES = [
   'no_current_market',
   'postponed_game',
   'canceled_game',
+  // V1-A1-2a addition (owner ruling 2026-07-15, DR-28) — placed before
+  // `abnormal_dispersion` to match the ordinal position produced by the
+  // migration's `ALTER TYPE ... ADD VALUE ... BEFORE 'abnormal_dispersion'`.
+  // The RESERVED terminal value `abnormal_dispersion` stays last.
+  // V1-A1-2a hand-off §6 authorized V1-A1-3 to make this update when the
+  // engine wires the emitter for `no_unique_consensus_line`.
+  'no_unique_consensus_line',
   'abnormal_dispersion',
 ] as const;
 export type EvidenceReasonCode = (typeof EVIDENCE_REASON_CODES)[number];
