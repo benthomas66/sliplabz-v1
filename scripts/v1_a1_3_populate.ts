@@ -61,23 +61,24 @@ async function main(): Promise<void> {
     return;
   }
 
-  // If hosted ever ends up with grains AND a non-test builder is supplied
-  // by a later ticket, the populator can run. Today the driver requires
-  // an injected builder (see populate.ts). Without one, exit truthfully.
+  // Hosted has grains: run the populator with V1-A1-3 Phase C's default
+  // read-model input builder. `today_utc_date` + `reference_date` are
+  // required by the default builder (DR-25 predicate + §H reproducibility);
+  // both are computed from the current UTC calendar day at invocation.
+  const today = new Date().toISOString().slice(0, 10);
+  const counters = await runEvidencePopulator({
+    connection_string: url,
+    today_utc_date: today,
+    reference_date: today,
+  });
   console.log(JSON.stringify({
     kind: 'complete',
-    counters: {
-      grains_observed: grains,
-      grains_skipped_no_input: 0,
-      profiles_inserted: 0,
-      profiles_updated: 0,
-      batches_ok: 0,
-      batches_retried: 0,
-    },
-    note:
-      'Hosted has grains but no live-market builder is wired into this operator. A later ticket owns the hosted builder once live polling exists.',
+    counters,
+    dr29_note:
+      counters.profiles_inserted === 0 && counters.profiles_updated === 0
+        ? 'Zero profiles persisted. The DR-29 pre-first-profile exception REMAINS ACTIVE.'
+        : 'Profiles persisted. The DR-29 event obligation applies — see docs/product/EVIDENCE_PROFILE_METHOD_V1.md §I.3 for the required first-profile record.',
   }, null, 2));
-  void runEvidencePopulator; // suppress unused-import lint when no run occurs
 }
 
 main().catch((err: unknown) => {

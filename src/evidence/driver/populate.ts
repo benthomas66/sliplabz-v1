@@ -62,6 +62,7 @@ import type { EvidenceProfileInput } from '../types.js';
 import { computeEvidenceProfile } from '../engine.js';
 import type { EvidenceProfileAuditRefs } from '../writer.js';
 import { writeEvidenceProfile } from '../writer.js';
+import { makeReadModelInputBuilder } from './readModelInputBuilder.js';
 
 /** V1-4b lesson pattern. Retries only on connection-class errors. */
 const CONNECTION_ERROR_PATTERNS = [
@@ -127,9 +128,17 @@ export interface PopulatorOptions {
   readonly batch_size?: number;
   /** BEGIN/ROLLBACK per batch when true — no persistent effect. */
   readonly dry_run?: boolean;
-  /** Injected profile-input builder. Tests override. Defaults to the
-   *  hosted reader below. */
+  /** Injected profile-input builder. Tests override. When omitted, the
+   *  Phase C default read-model builder (`makeReadModelInputBuilder`) is
+   *  used; the caller then MUST supply `today_utc_date` + `reference_date`
+   *  so the builder has no clock dependency. */
   readonly build_profile_input?: BuildProfileInput;
+  /** Today's UTC calendar day. Required when `build_profile_input` is
+   *  omitted (the default read-model builder needs it for DR-25). */
+  readonly today_utc_date?: string;
+  /** Reference date the threshold windows were computed against.
+   *  Required when `build_profile_input` is omitted. */
+  readonly reference_date?: string;
   /** Called after each successful batch commit with cumulative counters. */
   readonly on_batch?: (progress: PopulatorCounters) => void;
 }
@@ -228,14 +237,7 @@ export async function runEvidencePopulator(
 ): Promise<PopulatorCounters> {
   const batch_size = options.batch_size ?? DEFAULT_BATCH_SIZE;
   const dry_run = options.dry_run ?? false;
-  const builder: BuildProfileInput | null = options.build_profile_input ?? null;
-  if (builder === null) {
-    throw new Error(
-      'V1-A1-3 populator: no build_profile_input supplied. The hosted default builder is not implemented in Phase B ' +
-      '(current_market_rows is empty, so no builder is needed against hosted; tests supply their own). ' +
-      'A hosted builder is a follow-up ticket once live-market polling exists.'
-    );
-  }
+  const builder: BuildProfileInput = options.build_profile_input ?? defaultReadModelBuilder(options);
 
   const run_id = randomUUID();
   const started_at = new Date().toISOString();
@@ -338,6 +340,31 @@ async function runOneBatch(
 
 class DryRunRollback extends Error {
   constructor() { super('dry-run rollback'); }
+}
+
+/**
+ * Build the Phase C default `BuildProfileInput` from `today_utc_date`
+ * and `reference_date` supplied by the caller. Refuses when either is
+ * absent — the read-model builder needs both to satisfy §A (DR-25
+ * predicate for coverage; §H reproducibility for reference_date).
+ */
+function defaultReadModelBuilder(options: PopulatorOptions): BuildProfileInput {
+  if (options.today_utc_date === undefined || options.today_utc_date === '') {
+    throw new Error(
+      'V1-A1-3 populator: `today_utc_date` is required when `build_profile_input` is not supplied. ' +
+      'The default read-model builder needs it for the DR-25 30-day coverage predicate.'
+    );
+  }
+  if (options.reference_date === undefined || options.reference_date === '') {
+    throw new Error(
+      'V1-A1-3 populator: `reference_date` is required when `build_profile_input` is not supplied. ' +
+      'The default read-model builder needs it for §H reproducibility.'
+    );
+  }
+  return makeReadModelInputBuilder({
+    today_utc_date: options.today_utc_date,
+    reference_date: options.reference_date,
+  });
 }
 
 /**
