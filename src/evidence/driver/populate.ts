@@ -392,3 +392,40 @@ export async function countGrains(connection_string: string): Promise<number> {
     await client.end();
   }
 }
+
+/**
+ * List EVERY candidate grain from current_market_rows (latest
+ * computation_version per game/player/market), paginating through the
+ * SAME `listGrainsAfterCursor` query the v1 driver uses internally.
+ *
+ * V1-A2-4 — the v2 populator (`runEvidencePopulatorV2`) takes its grain
+ * list explicitly rather than enumerating it. This exported helper gives
+ * the v2 operator that list from the ONE canonical grain source, so v2
+ * does not fork a second grain query. Read-only; no writes.
+ */
+export async function listAllGrains(
+  connection_string: string,
+  batch_size: number = DEFAULT_BATCH_SIZE
+): Promise<ReadonlyArray<EvidenceGrain>> {
+  const pool = openPool({
+    connectionString: connection_string,
+    max: 1,
+    statement_timeout_ms: 30_000,
+    ssl: connection_string.includes('supabase.') ? 'require' : 'disable',
+  });
+  try {
+    const all: EvidenceGrain[] = [];
+    let cursor: { last_game: string; last_player: string; last_market: string } | null = null;
+    while (true) {
+      const page = await listGrainsAfterCursor(pool, cursor, batch_size);
+      if (page.length === 0) break;
+      all.push(...page);
+      const last = page[page.length - 1]!;
+      cursor = { last_game: last.internal_game_id, last_player: last.internal_player_id, last_market: last.market_key };
+      if (page.length < batch_size) break;
+    }
+    return all;
+  } finally {
+    await pool.end();
+  }
+}

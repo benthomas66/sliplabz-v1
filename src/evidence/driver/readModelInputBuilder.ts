@@ -111,9 +111,24 @@ export interface ReadModelBuilderContext {
  * Result the driver expects from a builder: the assembled input + audit
  * refs, or null to signal "skip this grain" (e.g. market_key not in the
  * DR-14 launch set — the four-market scope lock per GD-9).
+ *
+ * V1-A2-4 — ADDITIVE field `line_observed_at`.
+ *   The freshest `market_snapshots.observed_at` across the grain's
+ *   current-poll, self-observed offerings — the SAME `latestObserved`
+ *   value the builder already computes and hands the composer as
+ *   `freshness.last_observed_at` (see `readCurrentMarketRow`). It is an
+ *   OBSERVATION time drawn from the data, never a processing/clock time.
+ *   `null` exactly when the grain has no such offering (empty set); NULL
+ *   is honest and is never replaced by a fallback or sentinel timestamp.
+ *
+ *   The v1 populator consumes only `.input` and `.audit` (by property, not
+ *   positionally — see `src/evidence/driver/populate.ts`), so this extra
+ *   field changes nothing v1 computes. The v2 populator's
+ *   `V2BuildProfileInput` consumes it (via `makeV2ReadModelInputBuilder`).
  */
 export type ReadModelBuilderResult = {
   readonly input: EvidenceProfileInput;
+  readonly line_observed_at: string | null;
   readonly audit: EvidenceProfileAuditRefs;
 } | null;
 
@@ -164,7 +179,10 @@ async function buildOneGrain(
   // This is exactly what `currentMarketRowsAggregator.ts` does when it
   // WRITES current_market_rows; we do the same to READ the composed
   // shape.
-  const currentMarketRow = await readCurrentMarketRow(tx, grain);
+  // `line_observed_at` is surfaced here from the SAME value the composer
+  // uses for grain freshness — no second query, no clock read, no
+  // recomputation by another route (V1-A2-4).
+  const { row: currentMarketRow, line_observed_at } = await readCurrentMarketRow(tx, grain);
 
   // ---- Step 2: the game status (§C.8) --------------------------------------
   const gameStatus = await readGameStatus(tx, grain.internal_game_id);
@@ -258,7 +276,7 @@ async function buildOneGrain(
     book_detail_one_sided,
     source_read_model_computation_version: grain.source_read_model_computation_version,
   });
-  return Object.freeze({ input, audit });
+  return Object.freeze({ input, line_observed_at, audit });
 }
 
 // ---------------------------------------------------------------------------
@@ -280,7 +298,7 @@ async function buildOneGrain(
 async function readCurrentMarketRow(
   tx: Tx,
   grain: EvidenceGrain
-): Promise<CurrentMarketRow> {
+): Promise<{ row: CurrentMarketRow; line_observed_at: string | null }> {
   const offs = await tx.query(
     `SELECT mo.market_offering_id::text AS market_offering_id,
             ms.market_snapshot_id::text AS source_snapshot_id,
@@ -351,7 +369,7 @@ async function readCurrentMarketRow(
     .sort()
     .at(-1) ?? null;
 
-  return composeCurrentMarketRow({
+  const row = composeCurrentMarketRow({
     internal_game_id: grain.internal_game_id,
     internal_player_id: grain.internal_player_id,
     market_key: grain.market_key,
@@ -375,6 +393,14 @@ async function readCurrentMarketRow(
     },
     availability: null,
   });
+
+  // V1-A2-4 — surface `line_observed_at` = `latestObserved`, the EXACT
+  // value fed to the composer above as `freshness.last_observed_at`. It is
+  // the freshest `observed_at` across the grain's current-poll,
+  // self-observed offerings (the set assembled into `currentOfferings` and
+  // passed to the composer as `current_offerings`). Not recomputed by a
+  // second route; not a clock read. `null` iff `currentOfferings` is empty.
+  return { row, line_observed_at: latestObserved };
 }
 
 /**
