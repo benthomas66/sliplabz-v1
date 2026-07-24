@@ -334,13 +334,38 @@ export interface QualityVerdict {
  * without needing components). Component-dependent contradictions (§C.5
  * T2, C.5 windows_disagree, C.5 margin_measures_disagree) are evaluated
  * separately by reasons.ts after components are computed.
+ *
+ * v1 public entry — computes the §C.3 freshness verdict internally from
+ * `cmr.freshness.state` and delegates to the freshness-neutral core.
+ * Behaviour byte-identical to before V1-A2-2 REVISE.
  */
 export function evaluateQualityRules(input: EvidenceProfileInput): QualityVerdict {
   const cmr = input.current_market_row;
   const bc = cmr.eligible_book_count.count;
-
-  // §C.3 four-way disambiguation
   const c3 = evaluateC3Freshness(cmr.freshness.state, bc);
+  return evaluateQualityRulesCore(input, c3);
+}
+
+/**
+ * Freshness-neutral core (V1-A2-2 REVISE).
+ *
+ * Same rule set as {@link evaluateQualityRules} EXCEPT that the §C.3
+ * freshness verdict is supplied by the caller as a typed
+ * {@link C3Verdict} rather than derived from `cmr.freshness.state`. This
+ * lets v2 pass its own verdict (from `classifyV2Freshness`) without
+ * fabricating a sentinel `freshness.state` value on the CMR.
+ *
+ * v1 wraps this: `evaluateQualityRules(input)` computes the verdict
+ * from `cmr.freshness.state` via `evaluateC3Freshness` and calls this
+ * function. v2 computes its own verdict from `line_observed_at` +
+ * `evaluation_reference_time` and calls this function directly.
+ */
+export function evaluateQualityRulesCore(
+  input: EvidenceProfileInput,
+  c3: C3Verdict
+): QualityVerdict {
+  const cmr = input.current_market_row;
+  const bc = cmr.eligible_book_count.count;
 
   // §C.3.1 DR-28 tied — only fires when §C.3 would otherwise say proceed
   // (positive trigger) AND consensus is tied. Negative-scope: if §C.3

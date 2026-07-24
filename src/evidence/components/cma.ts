@@ -25,6 +25,22 @@
 // same conditions to emit the reasons.
 //
 // Pure function. No I/O.
+//
+// GOVERNOR NOTE (V1-A2-2 REVISE review) — deleted cma freshness branch.
+// This module previously carried a branch keyed on
+// `cmr.freshness.state === 'unavailable'`. It was removed during the
+// V1-A2-2 re-architecture. The removal is safe because the engine core
+// (src/evidence/engineCore.ts) short-circuits to Unavailable at the
+// `no_current_market_unavailable` C3 verdict BEFORE any §B component —
+// cma included — is computed, on BOTH the v1 and v2 paths; and the v2
+// path never routes a freshness STATE into cma at all (v2 passes a typed
+// C3 verdict, not a freshness string). The branch was therefore
+// unreachable under every current caller, and proof A confirms v1 output
+// is byte-identical. If a future change makes a component reachable while
+// the market is genuinely unavailable, this deletion must be revisited —
+// the branch was correct defensive logic, removed only because it is
+// currently unreachable, not because the condition is impossible in
+// principle.
 
 import type { CurrentMarketRow } from '../../computation/types.js';
 import { marginNormalizer } from '../marginNormalizers.js';
@@ -40,12 +56,22 @@ function signOf(x: number): -1 | 0 | 1 {
  * The reason C_MA was zeroed by the "empty market alignment" branch of
  * §B.5. Consumers use this to attach the corresponding §E reason.
  * `null` means C_MA was NOT zeroed by that branch.
+ *
+ * V1-A2-2 REVISE: `'freshness_unavailable'` is preserved in the type
+ * union for §E reason-attach compatibility; it is now ONLY set when a
+ * caller passes it as `force_zero_cause` (see below). The prior
+ * pre-REVISE cma.ts internally read `cmr.freshness.state === 'unavailable'`
+ * to set this cause — that path was DEAD CODE under the v1 engine (the
+ * engine short-circuits Unavailable+NO_CURRENT_MARKET before §B whenever
+ * freshness = 'unavailable', so CMA was never called with such a CMR),
+ * and it was a freshness-neutrality violation. It has been removed.
+ * v1 output is byte-identical on every existing fixture (proof A).
  */
 export type CmaZeroCause =
   | null
   | 'tied_no_unique_mode'    // §B.5 + §C.3.1 (DR-28)
   | 'no_eligible_source'     // §B.5 + §C.3 no market
-  | 'freshness_unavailable'  // §C.3 unavailable branch
+  | 'freshness_unavailable'  // §C.3 unavailable branch — caller-supplied only
   | 'one_sided_offering';    // §C.7 (DR-18)
 
 export interface CmaInputs {
@@ -79,13 +105,21 @@ export function computeCMA(input: CmaInputs): CmaResult {
   // per §F.6 explicit note ("C_MA STILL computes here — the 'empty
   // consensus' clause fires only when the consensus itself is
   // unresolved OR §C.7 one-sided fires, not merely because the market
-  // is stale"). Only freshness = 'unavailable' zeros here.
+  // is stale").
+  //
+  // V1-A2-2 REVISE: this module no longer reads `cmr.freshness.state`.
+  // The pre-REVISE branch `else if (cmr.freshness.state === 'unavailable')
+  // zero_cause = 'freshness_unavailable'` was dead code (the v1 engine
+  // short-circuits Unavailable+NO_CURRENT_MARKET before §B whenever
+  // freshness = 'unavailable'; CMA was never called with such a CMR).
+  // Its removal produces byte-identical v1 output on every existing
+  // fixture (proof A). Callers that need the freshness_unavailable zero
+  // cause must pass it via `force_zero_cause`.
   let zero_cause: CmaZeroCause = input.force_zero_cause ?? null;
   if (zero_cause === null) {
     const sel = cmr.line_consensus.selection_method;
     if (sel === 'tied_no_unique_mode') zero_cause = 'tied_no_unique_mode';
     else if (sel === 'no_eligible_source') zero_cause = 'no_eligible_source';
-    else if (cmr.freshness.state === 'unavailable') zero_cause = 'freshness_unavailable';
   }
 
   const E = input.evaluated_line;

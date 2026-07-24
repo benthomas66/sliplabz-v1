@@ -228,7 +228,8 @@ async function insertModerateOver(
         method_version, computation_version,
         reference_date, source_read_model_computation_version,
         current_market_row_id, bdl_availability_snapshot_id,
-        book_detail_one_sided)
+        book_detail_one_sided,
+        evaluation_reference_time, profile_generated_at)
      VALUES ($1, $2, $3, 'player_points',
              $4, $5, NULL,
              $6, $7,
@@ -238,7 +239,8 @@ async function insertModerateOver(
              $15, $16,
              '2026-07-14', $17,
              $18, $19,
-             'neither')`,
+             'neither',
+             $20::timestamptz, $21::timestamptz)`,
     [
       id,
       seed.game_id,
@@ -259,6 +261,16 @@ async function insertModerateOver(
       pick<number>(overrides.source_read_model_computation_version, 3),
       seed.current_market_row_id,
       seed.availability_snapshot_id,
+      // V1-A2-2 REVISE repair 10: the V1-A2-1 CHECK constraint
+      // (evidence_profiles_v2_timing_check) requires evaluation_reference_time
+      // and profile_generated_at to be NULL for evidence_method_v1 and NON-NULL
+      // for evidence_method_v2. This helper populates both fields conditionally
+      // on method_version so DR-24 simulation tests (P-UNIQ-VERSION-2) honour
+      // the constraint instead of tripping it.
+      pick<string>(overrides.method_version, EVIDENCE_METHOD_VERSION) === 'evidence_method_v2'
+        ? '2026-07-18T18:00:00Z' : null,
+      pick<string>(overrides.method_version, EVIDENCE_METHOD_VERSION) === 'evidence_method_v2'
+        ? '2026-07-18T18:00:05Z' : null,
     ]
   );
   return id;
