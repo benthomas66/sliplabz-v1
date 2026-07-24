@@ -33,6 +33,15 @@ export function computeEvidenceProfile(
 ): EvidenceProfileOutput {
   const cmr = input.current_market_row;
   const bc = cmr.eligible_book_count.count;
+  // V1-A2-5: `CurrentMarketRow.freshness` became OPTIONAL so the v2 path can
+  // honestly OMIT it. The v1 composer wrapper ALWAYS sets it, so on the v1
+  // path it is never absent — this is a behaviour-preserving type guard, not
+  // a logic change. v1 output stays byte-identical (proof 1).
+  if (cmr.freshness === undefined) {
+    throw new Error(
+      'evidence_method_v1 requires a composition-time freshness verdict on the current market row'
+    );
+  }
   const c3_verdict = evaluateC3Freshness(cmr.freshness.state, bc);
   return computeCoreEvidenceProfile(input, c3_verdict);
 }

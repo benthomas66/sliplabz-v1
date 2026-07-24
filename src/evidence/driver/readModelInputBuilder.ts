@@ -88,6 +88,7 @@ import type {
   CurrentOffering,
 } from '../../computation/types.js';
 import { composeCurrentMarketRow } from '../../computation/currentMarketRow.js';
+import { composeCurrentMarketRowV2 } from '../v2/freshnessNeutralMarketRow.js';
 import { computeThresholdWindow } from '../../computation/thresholdWindows.js';
 import type { ThresholdWindowGame } from '../../computation/thresholdWindows.js';
 import { readHistoricalCoverageForPlayerMarket } from '../../computation/historicalCoverage.js';
@@ -141,17 +142,43 @@ export type ReadModelBuilderResult = {
 export function makeReadModelInputBuilder(
   ctx: ReadModelBuilderContext
 ): (grain: EvidenceGrain, tx: Tx) => Promise<ReadModelBuilderResult> {
-  return async (grain, tx) => buildOneGrain(grain, tx, ctx);
+  return async (grain, tx) => buildOneGrain(grain, tx, ctx, readCurrentMarketRow);
+}
+
+/**
+ * V1-A2-5 — the v2 read-model builder core. Identical to the v1 builder
+ * EXCEPT the current-market-row assembly uses the FRESHNESS-NEUTRAL v2
+ * reader (`readCurrentMarketRowV2`): no wall-clock gate, no clock read. Used
+ * by `src/evidence/v2/readModelInputBuilderV2.ts`. After this ticket the v2
+ * pipeline contains zero clock reads from grain assembly through
+ * classification.
+ */
+export function makeReadModelInputBuilderV2Core(
+  ctx: ReadModelBuilderContext
+): (grain: EvidenceGrain, tx: Tx) => Promise<ReadModelBuilderResult> {
+  return async (grain, tx) => buildOneGrain(grain, tx, ctx, readCurrentMarketRowV2);
 }
 
 // ---------------------------------------------------------------------------
 // Per-grain assembly
 // ---------------------------------------------------------------------------
 
+/**
+ * How a grain's current market row is assembled. v1 injects the wall-clock
+ * reader; v2 injects the freshness-neutral reader. Everything else in
+ * `buildOneGrain` (game status, threshold windows, coverage, mapping, input
+ * assembly) is method-agnostic and shared.
+ */
+type MarketRowReader = (
+  tx: Tx,
+  grain: EvidenceGrain
+) => Promise<{ row: CurrentMarketRow; line_observed_at: string | null }>;
+
 async function buildOneGrain(
   grain: EvidenceGrain,
   tx: Tx,
-  ctx: ReadModelBuilderContext
+  ctx: ReadModelBuilderContext,
+  readMarketRow: MarketRowReader
 ): Promise<ReadModelBuilderResult> {
   // §A binds the engine to the four DR-14 launch markets (GD-9). If a
   // grain names a market outside that set, skip — no fabricated
@@ -179,10 +206,10 @@ async function buildOneGrain(
   // This is exactly what `currentMarketRowsAggregator.ts` does when it
   // WRITES current_market_rows; we do the same to READ the composed
   // shape.
-  // `line_observed_at` is surfaced here from the SAME value the composer
-  // uses for grain freshness — no second query, no clock read, no
-  // recomputation by another route (V1-A2-4).
-  const { row: currentMarketRow, line_observed_at } = await readCurrentMarketRow(tx, grain);
+  // `line_observed_at` is surfaced from the injected market-row reader (v1
+  // wall-clock reader or v2 freshness-neutral reader). No second query, no
+  // recomputation by another route (single owner: the assembly core).
+  const { row: currentMarketRow, line_observed_at } = await readMarketRow(tx, grain);
 
   // ---- Step 2: the game status (§C.8) --------------------------------------
   const gameStatus = await readGameStatus(tx, grain.internal_game_id);
@@ -284,21 +311,20 @@ async function buildOneGrain(
 // ---------------------------------------------------------------------------
 
 /**
- * Read composed CurrentMarketRow via the canonical composer per §A.3.
- * Follows the pattern established by
- * `src/computation/driver/currentMarketRowsAggregator.ts` verbatim:
- * pull eligible current-poll offerings and hand them to
- * `composeCurrentMarketRow`.
+ * Read the grain's eligible current-poll, self_observed offerings and group
+ * them into `CurrentOffering`s. SHARED by the v1 and v2 market-row readers —
+ * ONE query, ONE grouping (owner no-duplicate-query proof). Neither method
+ * re-queries; they differ only in which composer wrapper they feed.
  *
  * This does NOT touch historical (backfilled_historical) rows —
  * `market_snapshots.provenance = 'self_observed'` + `request_kind =
  * 'current_poll'` is enforced by the V1-3 / V1-4 CHECK constraints (§11.4)
  * and doubled here as an explicit predicate.
  */
-async function readCurrentMarketRow(
+async function readGrainOfferings(
   tx: Tx,
   grain: EvidenceGrain
-): Promise<{ row: CurrentMarketRow; line_observed_at: string | null }> {
+): Promise<ReadonlyArray<CurrentOffering>> {
   const offs = await tx.query(
     `SELECT mo.market_offering_id::text AS market_offering_id,
             ms.market_snapshot_id::text AS source_snapshot_id,
@@ -358,12 +384,25 @@ async function readCurrentMarketRow(
   }
   const currentOfferings: ReadonlyArray<CurrentOffering> = Array.from(byBookPoint.values())
     .map((v) => Object.freeze(v));
+  return currentOfferings;
+}
 
-  // Freshness derives from the latest observed_at across offerings for
-  // the grain — the aggregator's pattern (V1-5). If the grain has zero
-  // offerings, `latestObserved = null` and the composer treats
-  // freshness as unavailable (defense-in-depth against a stale
-  // snapshot leaking).
+/**
+ * v1 market-row reader — the WALL-CLOCK path. Reads the shared offerings and
+ * hands them to `composeCurrentMarketRow` (v1 wrapper), which applies the
+ * wall-clock freshness gate EXACTLY as before. UNCHANGED behaviour.
+ *
+ * `line_observed_at` is the freshest `observed_at` across the grain's
+ * offerings — the value the v1 composer uses for its freshness verdict.
+ * (This reader keeps computing `latestObserved` to feed the v1 composer's
+ * `freshness.last_observed_at` input, which is v1's contract.)
+ */
+async function readCurrentMarketRow(
+  tx: Tx,
+  grain: EvidenceGrain
+): Promise<{ row: CurrentMarketRow; line_observed_at: string | null }> {
+  const currentOfferings = await readGrainOfferings(tx, grain);
+
   const latestObserved = currentOfferings
     .map((o) => o.observed_at)
     .sort()
@@ -383,10 +422,8 @@ async function readCurrentMarketRow(
     freshness: {
       last_observed_at: latestObserved,
       // Freshness is evaluated relative to `now` inside the composer.
-      // Passing the reference date as "now" would misrepresent the
-      // grain's staleness; we honestly report the current wall clock.
-      // This is the ONLY clock read in this builder, and it is scoped
-      // to the composer's freshness owner (not the engine).
+      // This wall-clock read is the v1 path's ONLY clock read and is scoped
+      // to the composer's freshness owner. The v2 reader below has NONE.
       now: new Date().toISOString(),
       last_poll_succeeded: true,
       source_unavailable: false,
@@ -394,13 +431,35 @@ async function readCurrentMarketRow(
     availability: null,
   });
 
-  // V1-A2-4 — surface `line_observed_at` = `latestObserved`, the EXACT
-  // value fed to the composer above as `freshness.last_observed_at`. It is
-  // the freshest `observed_at` across the grain's current-poll,
-  // self-observed offerings (the set assembled into `currentOfferings` and
-  // passed to the composer as `current_offerings`). Not recomputed by a
-  // second route; not a clock read. `null` iff `currentOfferings` is empty.
   return { row, line_observed_at: latestObserved };
+}
+
+/**
+ * v2 market-row reader — the FRESHNESS-NEUTRAL path (V1-A2-5). Reads the
+ * SAME shared offerings and hands them to the v2 wrapper
+ * (`composeCurrentMarketRowV2`), which applies NO wall-clock gate and reads
+ * NO clock. `line_observed_at` is surfaced from the assembly core (single
+ * owner). There is NO `new Date()` on this path — Scope E.
+ *
+ * The returned row OMITS `freshness` (honestly); the v2 engine never reads
+ * it. `eligible_book_count` reflects the FULL offering set, so a grain older
+ * than v1's 300s window stays market-present for v2 (owner ruling R5).
+ */
+async function readCurrentMarketRowV2(
+  tx: Tx,
+  grain: EvidenceGrain
+): Promise<{ row: CurrentMarketRow; line_observed_at: string | null }> {
+  const currentOfferings = await readGrainOfferings(tx, grain);
+  const { row, line_observed_at } = composeCurrentMarketRowV2({
+    internal_game_id: grain.internal_game_id,
+    internal_player_id: grain.internal_player_id,
+    market_key: grain.market_key,
+    current_offerings: currentOfferings,
+    earliest_observations: [],
+    movement_events: [],
+    availability: null,
+  });
+  return { row, line_observed_at };
 }
 
 /**

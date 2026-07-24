@@ -342,6 +342,14 @@ export interface QualityVerdict {
 export function evaluateQualityRules(input: EvidenceProfileInput): QualityVerdict {
   const cmr = input.current_market_row;
   const bc = cmr.eligible_book_count.count;
+  // V1-A2-5: freshness is OPTIONAL on the type (so v2 can omit it) but the
+  // v1 composer wrapper always populates it. Behaviour-preserving guard on
+  // the v1 entry; v1 output byte-identical (proof 1).
+  if (cmr.freshness === undefined) {
+    throw new Error(
+      'evidence_method_v1 requires a composition-time freshness verdict on the current market row'
+    );
+  }
   const c3 = evaluateC3Freshness(cmr.freshness.state, bc);
   return evaluateQualityRulesCore(input, c3);
 }

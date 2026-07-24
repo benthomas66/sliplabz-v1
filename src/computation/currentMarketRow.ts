@@ -4,22 +4,12 @@
 // The web app and Brief BOTH consume this composed row; a Brief/app
 // equality test proves identical inputs → identical outputs.
 
-import {
-  computeEligibleBookCount,
-  computeLineConsensus,
-  computeLineRange,
-  computePointDistribution,
-} from './consensus.js';
-import { computeBookDetail } from './bookDetail.js';
-import { computeFirstObservedConsensus } from './firstObserved.js';
-import { computeMovementSummary } from './movementSummary.js';
 import { computeFreshness, isFreshEnoughForConsensus } from './freshness.js';
-import { computeAvailabilityContext } from './availabilityContext.js';
-import { V1_5_COMPUTATION_VERSION, methodVersionOf } from './computationVersion.js';
+import { assembleMarketRowCore } from './currentMarketRowCore.js';
 import type { AvailabilityContextInput } from './availabilityContext.js';
 import type { EarliestObservation } from './firstObserved.js';
 import type { MovementEventForSummary } from './movementSummary.js';
-import type { CurrentOffering, CurrentMarketRow } from './types.js';
+import type { CurrentOffering, CurrentMarketRowV1 } from './types.js';
 import type { FreshnessInput } from './freshness.js';
 
 export interface CurrentMarketRowInput {
@@ -49,52 +39,52 @@ export interface CurrentMarketRowInput {
  */
 export function composeCurrentMarketRow(
   input: CurrentMarketRowInput
-): CurrentMarketRow {
+): CurrentMarketRowV1 {
   // Structural freshness gate on the offerings that reach the consensus
   // formulas. The caller has already computed freshness for each source,
   // and passed in only offerings whose source is fresh_or_aging. As a
   // defense-in-depth check, we compute the grain freshness here and, when
   // it is unavailable / stale / failed, treat the consensus as no_line by
   // passing an empty offering set to the consensus formulas.
+  //
+  // V1-A2-5: the wall-clock gate + freshness stay HERE (v1's method-specific
+  // eligibility rule). The structural computation is delegated UNCHANGED to
+  // the freshness-neutral core. This is byte-identical to the pre-V1-A2-5
+  // body: identical formulas, identical order, over the identical gated set.
   const freshness = computeFreshness(input.freshness);
   const structurallyEligibleOfferings = isFreshEnoughForConsensus(freshness.state)
     ? input.current_offerings
     : Object.freeze([]) as ReadonlyArray<CurrentOffering>;
 
-  const consensus = computeLineConsensus(structurallyEligibleOfferings);
-  const range = computeLineRange(structurallyEligibleOfferings);
-  const distribution = computePointDistribution(structurallyEligibleOfferings);
-  const bookCount = computeEligibleBookCount(structurallyEligibleOfferings);
-  const firstObserved = computeFirstObservedConsensus(input.earliest_observations);
-  const movement = computeMovementSummary(
-    input.movement_events,
-    firstObserved.point,
-    consensus.consensus_point
-  );
-  const bookDetail = computeBookDetail(structurallyEligibleOfferings);
-  const availability = computeAvailabilityContext(input.availability);
-
-  const source_snapshot_ids = Object.freeze(
-    Array.from(new Set(structurallyEligibleOfferings.map((o) => o.source_snapshot_id)))
-      .filter((s) => s !== '')
-      .sort()
-  );
-
-  return Object.freeze({
+  const core = assembleMarketRowCore({
     internal_game_id: input.internal_game_id,
     internal_player_id: input.internal_player_id,
     market_key: input.market_key,
-    line_consensus: consensus,
-    line_range: range,
-    point_distribution: distribution,
-    eligible_book_count: bookCount,
-    first_observed: firstObserved,
-    movement_summary: movement,
+    offerings: structurallyEligibleOfferings,
+    earliest_observations: input.earliest_observations,
+    movement_events: input.movement_events,
+    availability: input.availability,
+  });
+
+  // v1's row shape is UNCHANGED: it carries `freshness` and does NOT carry
+  // `line_observed_at` (that lives on MarketRowCore only). Dropping the
+  // core's `line_observed_at` here keeps the persisted/serialized v1 row
+  // byte-identical to before.
+  return Object.freeze({
+    internal_game_id: core.internal_game_id,
+    internal_player_id: core.internal_player_id,
+    market_key: core.market_key,
+    line_consensus: core.line_consensus,
+    line_range: core.line_range,
+    point_distribution: core.point_distribution,
+    eligible_book_count: core.eligible_book_count,
+    first_observed: core.first_observed,
+    movement_summary: core.movement_summary,
     freshness,
-    book_detail: bookDetail,
-    availability_context: availability,
-    method_version: methodVersionOf('current_market_row'),
-    computation_version: V1_5_COMPUTATION_VERSION,
-    source_snapshot_ids,
+    book_detail: core.book_detail,
+    availability_context: core.availability_context,
+    method_version: core.method_version,
+    computation_version: core.computation_version,
+    source_snapshot_ids: core.source_snapshot_ids,
   });
 }

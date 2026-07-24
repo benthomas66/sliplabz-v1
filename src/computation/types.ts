@@ -312,7 +312,23 @@ export interface CurrentMarketRow {
   readonly eligible_book_count: EligibleBookCountResult;
   readonly first_observed: FirstObservedResult;
   readonly movement_summary: MovementSummaryResult;
-  readonly freshness: FreshnessResult;
+  /**
+   * Wall-clock freshness verdict. OPTIONAL as of V1-A2-5.
+   *
+   * The v1 composer wrapper (`composeCurrentMarketRow`) ALWAYS populates
+   * this — v1 rows are byte-identical to before, and every v1 consumer
+   * receives it. The v2 composer wrapper
+   * (`src/evidence/v2/freshnessNeutralMarketRow.ts`) OMITS it: v2 has no
+   * composition-time freshness state — its disposition is decided at
+   * classification from `classification_age = evaluation_reference_time −
+   * line_observed_at` (D-A1). Omission is the HONEST representation of
+   * "freshness not evaluated here"; the field is never set to a fabricated
+   * value, a sentinel, or a placeholder timestamp on the v2 path (owner
+   * ruling R2 + the honesty trap). The v2 classification path never reads
+   * this field (engineV2 injects a typed C3 verdict; engineCore reads only
+   * availability_context), so its absence changes no v2 behaviour.
+   */
+  readonly freshness?: FreshnessResult;
   /** Per-book offerings. Paid-only field; the capability filter strips
    *  this before serialization for free tier. */
   readonly book_detail: BookDetailResult;
@@ -320,5 +336,44 @@ export interface CurrentMarketRow {
   readonly method_version: number;
   readonly computation_version: number;
   /** Source snapshot ids consulted, for walk-back. */
+  readonly source_snapshot_ids: ReadonlyArray<string>;
+}
+
+/**
+ * `CurrentMarketRow` guaranteed to carry a wall-clock `freshness` verdict.
+ * The v1 composer wrapper returns this stricter type so existing v1
+ * consumers (the aggregator, the read path) see `freshness` as REQUIRED,
+ * exactly as before V1-A2-5.
+ */
+export type CurrentMarketRowV1 = CurrentMarketRow & { readonly freshness: FreshnessResult };
+
+/**
+ * FRESHNESS-NEUTRAL assembly core output (V1-A2-5).
+ *
+ * The shared structural market computation, owning NO method-specific
+ * eligibility rule and NO wall-clock. Both composer wrappers (v1 + v2)
+ * build on this. It carries `line_observed_at` — the freshest
+ * `market_snapshots.observed_at` across the offering set the core was
+ * given — as the single owner of that metric (no duplicate computation).
+ *
+ * It deliberately has NO `freshness` field: freshness is a method-specific
+ * policy applied by the wrapper, not a structural market fact.
+ */
+export interface MarketRowCore {
+  readonly internal_game_id: string;
+  readonly internal_player_id: string;
+  readonly market_key: string;
+  readonly line_consensus: LineConsensusResult;
+  readonly line_range: LineRangeResult;
+  readonly point_distribution: PointDistributionResult;
+  readonly eligible_book_count: EligibleBookCountResult;
+  readonly first_observed: FirstObservedResult;
+  readonly movement_summary: MovementSummaryResult;
+  readonly book_detail: BookDetailResult;
+  readonly availability_context: AvailabilityContextResult | null;
+  /** Freshest observed_at across the given offering set; null when empty. */
+  readonly line_observed_at: string | null;
+  readonly method_version: number;
+  readonly computation_version: number;
   readonly source_snapshot_ids: ReadonlyArray<string>;
 }

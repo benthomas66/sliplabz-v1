@@ -39,6 +39,10 @@ function withConsensus(
     freshness_state?: 'fresh' | 'aging' | 'stale' | 'unavailable' | 'failed_latest_poll';
   }
 ): CurrentMarketRow {
+  // V1-A2-5: CurrentMarketRow.freshness is now optional (v2 omits it). These
+  // v1 fixtures always carry it; narrow so the spread stays type-sound.
+  const baseFreshness = cmr.freshness;
+  if (baseFreshness === undefined) throw new Error('fixture invariant: v1 CMR carries freshness');
   return {
     ...cmr,
     line_consensus: {
@@ -54,8 +58,8 @@ function withConsensus(
       ? { count: overrides.eligible_book_count, method_version: cmr.eligible_book_count.method_version }
       : cmr.eligible_book_count,
     freshness: overrides.freshness_state !== undefined
-      ? { ...cmr.freshness, state: overrides.freshness_state }
-      : cmr.freshness,
+      ? { ...baseFreshness, state: overrides.freshness_state }
+      : baseFreshness,
   };
 }
 

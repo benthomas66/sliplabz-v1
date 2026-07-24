@@ -22,7 +22,7 @@
 import type { Tx } from '../../db/transaction.js';
 import type { EvidenceGrain } from '../driver/populate.js';
 import {
-  makeReadModelInputBuilder,
+  makeReadModelInputBuilderV2Core,
   type ReadModelBuilderContext,
 } from '../driver/readModelInputBuilder.js';
 import type { V2BuildProfileInput, V2EvidenceGrain } from './populateV2.js';
@@ -37,11 +37,16 @@ import type { V2BuildProfileInput, V2EvidenceGrain } from './populateV2.js';
 export function makeV2ReadModelInputBuilder(
   ctx: ReadModelBuilderContext
 ): V2BuildProfileInput {
-  const v1Builder = makeReadModelInputBuilder(ctx);
+  // V1-A2-5: the v2 builder core assembles the current market row via the
+  // FRESHNESS-NEUTRAL v2 composer wrapper (no wall-clock gate, no clock).
+  // Before V1-A2-5 this wrapped the v1 wall-clock builder, which was the
+  // GAP-12 blocker: the v1 gate zeroed book_count for grains > ~300s old, so
+  // v2 mis-classified them `absent`. The v2 path is now clock-free.
+  const v2CoreBuilder = makeReadModelInputBuilderV2Core(ctx);
   return async (grain: V2EvidenceGrain, tx: Tx) => {
     // V2EvidenceGrain and EvidenceGrain are structurally identical (same
     // five fields); the bridge is a type-narrowing pass-through, not a
-    // reshape. The extended v1 builder returns exactly
+    // reshape. The v2 core builder returns exactly
     // `{ input, line_observed_at, audit } | null` — the V2BuildProfileInput
     // contract — so its result flows straight through.
     const v1Grain: EvidenceGrain = {
@@ -51,6 +56,6 @@ export function makeV2ReadModelInputBuilder(
       current_market_row_id: grain.current_market_row_id,
       source_read_model_computation_version: grain.source_read_model_computation_version,
     };
-    return v1Builder(v1Grain, tx);
+    return v2CoreBuilder(v1Grain, tx);
   };
 }
