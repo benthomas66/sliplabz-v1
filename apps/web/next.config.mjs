@@ -20,12 +20,19 @@
 // Turbopack-verified equivalent, switch every `next build` invocation
 // together, and RE-RUN the full serialization audit under the new builder.
 // Do not remove `--webpack` piecemeal.
+import path from 'node:path';
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
-  // Scope file tracing to THIS app so Next does not infer the repo root from
-  // the pre-existing root lockfile.
-  outputFileTracingRoot: import.meta.dirname,
+  // File-tracing root = the REPOSITORY ROOT (this config lives at apps/web/, so
+  // `../../` from here is the repo root). It MUST be the repo root because this
+  // app consumes committed backend modules ABOVE its own directory (`../../src`
+  // — the compact renderer, dr20Compare). Pointing tracing at the app dir
+  // caused Vercel's output collection to look for `.next` at the upload root
+  // (the ENOENT of 2026-07-25, V1-6c). Anchoring at the repo root also
+  // addresses the original lockfile-inference warning this setting was added
+  // for (V1-6a).
+  outputFileTracingRoot: path.join(import.meta.dirname, '../../'),
   // The consumed backend modules under ../../src (the committed compact
   // renderer, dr20Compare, shared types) use ESM `.js` import specifiers that
   // resolve to `.ts` sources. Teach the bundler that mapping so we consume
