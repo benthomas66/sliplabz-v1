@@ -3,9 +3,23 @@
 //   * Application runtime uses the Supabase TRANSACTION pooler (port 6543).
 //   * The Board data path runs on the Node runtime (Postgres; never edge).
 //
-// Built with the webpack builder (`next build --webpack`) so the
-// `.js`->`.ts` extension aliasing below applies to the consumed backend
-// modules. Turbopack is not used for this slice.
+// BUILDER PIN (V1-6b, GAP-15). This app is built with the WEBPACK builder
+// (`next build --webpack`) — every `next build` invocation (the `build` and
+// `audit` package scripts and the audit tests' subprocess builds) uses the
+// SAME flag. WHY the pin exists:
+//   (1) Next 16 defaults to Turbopack, which does NOT honour the webpack
+//       `extensionAlias` below;
+//   (2) that `.js`->`.ts` extensionAlias is the MECHANISM by which this app
+//       consumes committed backend modules (dr20Compare, the compact
+//       renderer) without duplicating them — it is load-bearing;
+//   (3) PARITY: the committed serialization audit's client-bundle scan must
+//       run against the SAME builder that produces the deployed artifact, or
+//       the scan does not cover what Vercel serves.
+// Removing this pin (migrating to Turbopack) is a SEPARATE future ticket
+// (GAP-15): it must replace the extensionAlias mechanism with a
+// Turbopack-verified equivalent, switch every `next build` invocation
+// together, and RE-RUN the full serialization audit under the new builder.
+// Do not remove `--webpack` piecemeal.
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,

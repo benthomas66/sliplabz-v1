@@ -5,7 +5,7 @@
   "description": "SlipLabz V1-6a Board vertical slice. Isolated Next.js app; does not alter the root backend toolchain.",
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "next build --webpack",
     "start": "next start",
     "typecheck": "tsc --noEmit",
     "test": "node --conditions=react-server --import tsx --test --test-concurrency=1 test/**/*.test.ts",
