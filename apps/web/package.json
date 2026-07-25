@@ -1,0 +1,29 @@
+{
+  "name": "@sliplabz/web",
+  "version": "0.1.0",
+  "private": true,
+  "description": "SlipLabz V1-6a Board vertical slice. Isolated Next.js app; does not alter the root backend toolchain.",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "typecheck": "tsc --noEmit",
+    "test": "node --conditions=react-server --import tsx --test --test-concurrency=1 test/**/*.test.ts",
+    "audit": "next build --webpack && node --conditions=react-server --import tsx --test --test-concurrency=1 test-audit/serialization.test.ts test-audit/negativeBoundary.test.ts"
+  },
+  "dependencies": {
+    "next": "16.2.11",
+    "react": "19.2.0",
+    "react-dom": "19.2.0",
+    "server-only": "0.0.1",
+    "pg": "^8.13.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.5.0",
+    "tsx": "^4.19.0",
+    "@types/node": "^20.14.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@types/pg": "^8.11.10"
+  }
+}
