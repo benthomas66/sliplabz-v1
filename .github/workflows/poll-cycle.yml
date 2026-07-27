@@ -1,0 +1,67 @@
+# V1-OP-1 — SlipLabz scheduled polling loop.
+#
+# Runs one poll -> aggregate -> v2-populate cycle so the Board is populated
+# whenever a WNBA game is inside the 3h pregame window. PREGAME ONLY; the
+# slate gate stops polling at tipoff. In-play polling is out of scope.
+#
+# IDLE COST: the slate gate (src/ops/scheduledCycle.ts stage 1) is DATABASE
+# ONLY. When no game is inside the 3h window the cycle spends ZERO Odds API
+# credits and exits 'skipped_no_slate'. So the 96 daily wakes cost ZERO API
+# credits and only a few GitHub Actions minutes each; credits are spent ONLY
+# during game windows (~2,880 credits/month avg, ~5,760 p95 per the V1-4h cost
+# model; balance ~33,000 — wide margin).
+#
+# ACTIVATION IS A FOUNDER ACTION. This workflow does nothing until BOTH:
+#   1. the repository is pushed to GitHub with this file on the default branch;
+#   2. the founder sets two repository secrets (Settings -> Secrets and
+#      variables -> Actions):
+#        - SLIPLABZ_HOSTED_DATABASE_URL  (the SESSION-pooler URI, port 5432 —
+#          the cycle uses a session-scoped advisory lock)
+#        - ODDS_API_KEY
+# The agent did NOT enable, trigger, push, or set any secret. Secret VALUES
+# never appear in this file, in logs, or in any report — they are referenced
+# by name only.
+
+name: poll-cycle
+
+on:
+  schedule:
+    # Every 15 minutes. Cadence lives HERE (ops parameter), not in code.
+    - cron: '*/15 * * * *'
+  workflow_dispatch: {}   # manual run button for operators
+
+# One cycle at a time: overlapping wakes QUEUE rather than race (belt to the
+# orchestrator's advisory-lock suspenders).
+concurrency:
+  group: poll-cycle
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  cycle:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run one scheduled cycle
+        env:
+          SLIPLABZ_HOSTED_DATABASE_URL: ${{ secrets.SLIPLABZ_HOSTED_DATABASE_URL }}
+          ODDS_API_KEY: ${{ secrets.ODDS_API_KEY }}
+          # Live-invoke gate (src/lines/liveInvokeGate.ts): the operator refuses
+          # to build a live Odds API config unless this is '1'. It is a plain
+          # flag, NOT a secret. The slate gate still runs first, so idle wakes
+          # make no API call regardless of this flag.
+          ODDSAPI_LIVE_INVOKE: '1'
+        run: node --import tsx scripts/run_scheduled_cycle.ts
