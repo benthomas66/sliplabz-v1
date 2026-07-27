@@ -37,6 +37,9 @@ const PROHIBITED = [SCORE_DIGITS, DISTINCTIVE_PAID_BOOK, PAID_PRICE_DIGITS];
 const SECRET_MARKERS = ['postgres://', 'postgresql://', 'SLIPLABZ_BOARD_DATABASE_URL='];
 
 function boardUrl(): string { return `${BASE!.replace(/\/$/, '')}/board`; }
+function previewUrl(): string { return `${BASE!.replace(/\/$/, '')}/design-preview`; }
+// The distinctive fixture furniture a POPULATED preview board must render.
+const PREVIEW_POSITIVE_CONTROLS = ['DESIGN PREVIEW', 'stale market', 'Includes seeded historical closing lines'];
 
 test('deployed Board HTML: prohibited values + secrets absent; flight present; empty-state positive control', { skip }, async () => {
   const res = await fetch(boardUrl());
@@ -64,6 +67,31 @@ test('deployed Board HTML: prohibited values + secrets absent; flight present; e
   for (const s of SECRET_MARKERS) {
     assert.ok(!html.includes(s), `secret material "${s}" present in the deployed HTML`);
   }
+});
+
+test('V1-6e deployed /design-preview: banner present, POPULATED board, prohibited values + secrets absent', { skip }, async () => {
+  const res = await fetch(previewUrl());
+  const html = await res.text();
+
+  assert.equal(res.status, 200, `deployed /design-preview returned ${res.status}; body:\n${html.slice(0, 800)}`);
+  // POSITIVE CONTROL: the persistent banner AND a populated board (cap + provenance furniture).
+  for (const ctl of PREVIEW_POSITIVE_CONTROLS) {
+    assert.ok(html.includes(ctl), `deployed /design-preview missing "${ctl}" — banner absent or board not populated`);
+  }
+  assert.ok(html.includes('__next_f'), 'RSC flight marker __next_f absent on deployed /design-preview');
+
+  // Fixture canaries and secrets never reach the browser from the preview either.
+  for (const bad of PROHIBITED) {
+    assert.ok(!html.includes(bad), `prohibited value "${bad}" present in deployed /design-preview HTML`);
+  }
+  for (const s of SECRET_MARKERS) {
+    assert.ok(!html.includes(s), `secret material "${s}" present in deployed /design-preview HTML`);
+  }
+});
+
+test('V1-6e isolation: the deployed production /board carries NO preview banner', { skip }, async () => {
+  const html = await (await fetch(boardUrl())).text();
+  assert.ok(!html.includes('DESIGN PREVIEW'), 'preview banner leaked onto the deployed /board route');
 });
 
 test('deployed client bundles: no db code, no secrets, no prohibited values', { skip }, async () => {

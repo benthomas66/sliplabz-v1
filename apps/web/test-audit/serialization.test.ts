@@ -115,6 +115,27 @@ test('RSC / navigation flight response leaks no prohibited value (raw body)', as
   }
 });
 
+test('V1-6e /design-preview: banner present, POPULATED board, prohibited values absent (full body)', async () => {
+  const html = await (await fetch(`http://localhost:${FIXTURE_PORT}/design-preview`)).text();
+  // The persistent server-rendered banner must be in the raw HTML.
+  assert.ok(html.includes('DESIGN PREVIEW'), 'design-preview banner missing from the served HTML');
+  // GUARD (a): the flight payload IS present.
+  assert.ok(html.includes('__next_f'), 'RSC flight marker __next_f absent on /design-preview');
+  // GUARD (b): positive control — a POPULATED preview board (real cap + provenance furniture).
+  for (const ctl of POSITIVE_CONTROLS) {
+    assert.ok(html.includes(ctl), `positive control "${ctl}" missing — /design-preview did not render a populated board`);
+  }
+  // The same negative assertions as /board: fixture canaries never reach the browser.
+  for (const bad of PROHIBITED) {
+    assert.ok(!html.includes(bad), `prohibited value "${bad}" leaked into the /design-preview body`);
+  }
+});
+
+test('V1-6e isolation: the preview banner NEVER appears on the production /board response', async () => {
+  const html = await (await fetch(`http://localhost:${FIXTURE_PORT}/board`)).text();
+  assert.ok(!html.includes('DESIGN PREVIEW'), 'preview banner leaked onto the production /board route');
+});
+
 test('client JS bundles contain no prohibited value, no db driver code, no connection string, no env var name', () => {
   const files = walk(join(APP_DIR, '.next', 'static')).filter((f) => f.endsWith('.js'));
   assert.ok(files.length > 0, 'no client bundles found to scan');
