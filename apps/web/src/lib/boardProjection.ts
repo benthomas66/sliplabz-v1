@@ -34,6 +34,11 @@ export const BOARD_PROJECTION_FORBIDDEN_KEYS = [
   'composite_score', 'components', 'score', 'book_detail', 'offerings',
   'paid_book_offerings', 'profile_output', 'reasons', 'method_version',
   'l10_eligible_n', 'eligible_sportsbook_count', 'internal_game_id',
+  // V1-6d: the serve-gate input is a server-side timestamp. It governs
+  // suppression in boardService and must never cross to the browser — no
+  // display-age value reaches the projection (visible age UI is deferred to
+  // design review). The runtime key-set assertion enforces its absence.
+  'line_observed_at',
 ] as const;
 
 export interface BoardProjectionBase {

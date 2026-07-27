@@ -7,6 +7,7 @@ import 'server-only';
 // `BoardProjection[]`.
 
 import { dr20Compare } from '../../../../../src/evidence/classification.js';
+import { evaluateV2ServingGate } from '../../../../../src/evidence/v2/servingGate.js';
 import { ACTIVE_BOARD_METHOD_VERSION, assertKnownMethodVersion } from '../method.js';
 import { constructBoardProjection, type BoardProjection } from '../boardProjection.js';
 import type { RankedCandidate } from '../rankedCandidate.js';
@@ -37,21 +38,46 @@ export interface BoardData {
 }
 
 /**
- * Produce the Board data for the ACTIVE method version. Ranking happens
- * BEFORE projection; the comparator is the committed `dr20Compare` (one
- * owner per metric). A NULL stored score sorts LAST (never treated as zero).
+ * Produce the Board data for the ACTIVE method version.
+ *
+ * Pipeline (V1-6d): fetch → SERVE-GATE → rank → project.
+ *
+ *   * SERVE GATE (§5 + D-A1): capture ONE `serve_now` for the whole request
+ *     and apply the committed `evaluateV2ServingGate` to every candidate with
+ *     that single timestamp — mirroring the one-evaluation_reference_time-per-
+ *     batch principle at serve time, so a slow request cannot strand one row
+ *     on each side of the 3600s boundary by re-reading the clock. Rows past
+ *     the horizon (decision !== 'serve') are DROPPED here, before projection.
+ *     The gate is pure and never mutates the persisted classification; this
+ *     path only chooses whether to display a row.
+ *   * RANK happens BEFORE projection; the comparator is the committed
+ *     `dr20Compare` (one owner per metric). A NULL stored score sorts LAST.
+ *   * When every fetched row is suppressed, `projections` is empty and the
+ *     page renders the approved empty state — identical to zero fetched rows.
+ *
+ * `serve_now` is injectable for tests (boundary determinism without waiting);
+ * production leaves it defaulted to the request instant.
  */
-export async function getBoardData(repo: BoardRepository = chooseBoardRepository()): Promise<BoardData> {
+export async function getBoardData(
+  repo: BoardRepository = chooseBoardRepository(),
+  serve_now: string = new Date().toISOString(),
+): Promise<BoardData> {
   // Fail-loud if the active method were ever mis-configured (v2 authority §7).
   assertKnownMethodVersion(ACTIVE_BOARD_METHOD_VERSION);
 
   const candidates = await repo.queryRankedCandidates(ACTIVE_BOARD_METHOD_VERSION);
 
+  // SERVE GATE: one serve_now, applied to every candidate via the committed
+  // gate. Suppressed rows are dropped before ranking/projection.
+  const served: ReadonlyArray<RankedCandidate> = candidates.filter(
+    (c) => evaluateV2ServingGate({ line_observed_at: c.line_observed_at, serve_now }).decision === 'serve',
+  );
+
   // Rank on full-precision stored score BEFORE projection. Copy before sort
   // (do not mutate the repository's array).
-  const ranked: RankedCandidate[] = [...candidates].sort(dr20Compare);
+  const ranked: RankedCandidate[] = [...served].sort(dr20Compare);
 
-  // Project AFTER sorting. The score is gone from here on.
+  // Project AFTER sorting. The score — and line_observed_at — are gone from here on.
   const projections = ranked.map(constructBoardProjection);
 
   return { method_version: ACTIVE_BOARD_METHOD_VERSION, projections };

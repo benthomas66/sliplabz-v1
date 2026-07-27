@@ -25,6 +25,17 @@ export interface RankedCandidate {
   // ---- the method version this row belongs to (selection integrity) ----
   readonly method_version: MethodVersion;
 
+  // ---- V1-6d SERVE-GATE INPUT (internal-only). The freshest self-observed
+  //      current_poll observation for the grain (market_snapshots.observed_at),
+  //      BOUNDED by this profile's own evaluation_reference_time (V1-6d REVISE):
+  //      observations recorded after the profile was classified are excluded,
+  //      so a newer poll cannot rejuvenate an older profile at serve time.
+  //      Consumed ONLY by the serving gate in boardService (display_age =
+  //      serve_now − line_observed_at); dropped BEFORE projection and a
+  //      FORBIDDEN projection key. `null` when the grain has no such
+  //      offering at/before its reference time — the gate suppresses that row. ----
+  readonly line_observed_at: string | null;
+
   // ---- allowlisted display inputs ----
   readonly player: string;
   readonly team: string;

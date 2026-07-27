@@ -57,7 +57,8 @@ export function buildBoardQuery(method: MethodVersion): { text: string; values: 
            ep.c_ma::float8                  AS c_ma,
            p.display_name                   AS player,
            COALESCE(t.display_name, '')     AS team,
-           COALESCE(cmr.eligible_sportsbook_count, 0)::int AS eligible_sportsbook_count
+           COALESCE(cmr.eligible_sportsbook_count, 0)::int AS eligible_sportsbook_count,
+           lo.line_observed_at              AS line_observed_at
       FROM evidence_profiles ep
       JOIN players p            ON p.internal_player_id = ep.internal_player_id
       LEFT JOIN teams t         ON t.internal_team_id = p.current_team_id
@@ -70,6 +71,28 @@ export function buildBoardQuery(method: MethodVersion): { text: string; values: 
          ORDER BY c.computation_version DESC
          LIMIT 1
       ) cmr ON true
+      -- V1-6d serve-gate input, PROFILE-BOUNDED (V1-6d REVISE). The freshest
+      -- self-observed current_poll observation for this grain, but bounded by
+      -- THIS profile's own evaluation_reference_time: only observations at or
+      -- before the instant the profile was classified are eligible. A newer
+      -- successful poll whose populate did NOT produce a fresh profile (e.g. a
+      -- failed populate after a successful poll) therefore CANNOT rejuvenate
+      -- this older profile at serve time — the row stays as stale as the data
+      -- that actually backs it. Read-only; it re-reads persisted facts and does
+      -- NOT recompute the gate decision (that is the committed
+      -- evaluateV2ServingGate, called once in boardService). The observed_at
+      -- bound is the profile's timing anchor, NOT a second suppression threshold.
+      LEFT JOIN LATERAL (
+        SELECT max(ms.observed_at) AS line_observed_at
+          FROM market_offerings mo
+          JOIN market_snapshots ms ON ms.market_snapshot_id = mo.market_snapshot_id
+         WHERE ms.linked_internal_game_id = ep.internal_game_id
+           AND mo.internal_player_id = ep.internal_player_id
+           AND ms.market_key = ep.market_key
+           AND ms.request_kind = 'current_poll'
+           AND ms.provenance = 'self_observed'
+           AND ms.observed_at <= ep.evaluation_reference_time
+      ) lo ON true
      WHERE ep.method_version = $1`;
   return { text, values: [method] };
 }
@@ -94,6 +117,7 @@ interface BoardQueryRow {
   player: string;
   team: string;
   eligible_sportsbook_count: number;
+  line_observed_at: string | Date | null;
 }
 
 /**
@@ -142,6 +166,12 @@ function rowToCandidate(row: BoardQueryRow, method: MethodVersion): RankedCandid
     eligible_sportsbook_count: row.eligible_sportsbook_count,
     internal_game_id: row.internal_game_id,
     method_version: method,
+    // Normalise the audit-chain observation time to ISO; null stays null
+    // (grain with no self_observed current_poll offering → gate suppresses).
+    line_observed_at:
+      row.line_observed_at instanceof Date
+        ? row.line_observed_at.toISOString()
+        : row.line_observed_at,
     player: row.player,
     team: row.team,
     market: row.market_key,

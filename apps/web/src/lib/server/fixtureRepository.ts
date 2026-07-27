@@ -61,6 +61,9 @@ function candidate(
     internal_game_id: string; player: string; team: string; market: string;
     evaluated_line: number | null; composite_score: number | null;
     l10_eligible_n: number; eligible_sportsbook_count: number;
+    // V1-6d: serve-gate input. Optional — defaults to a FRESH observation
+    // (well inside the 3600s horizon) so default fixtures always serve.
+    line_observed_at?: string | null;
   },
   profile_output: EvidenceProfileOutput
 ): RankedCandidate {
@@ -70,6 +73,7 @@ function candidate(
     eligible_sportsbook_count: base.eligible_sportsbook_count,
     internal_game_id: base.internal_game_id,
     method_version: method,
+    line_observed_at: base.line_observed_at === undefined ? freshObservedAt() : base.line_observed_at,
     player: base.player,
     team: base.team,
     market: base.market,
@@ -77,6 +81,17 @@ function candidate(
     profile_output,
     paid_book_offerings: [{ book: DISTINCTIVE_PAID_BOOK, price: DISTINCTIVE_PAID_PRICE }],
   };
+}
+
+/**
+ * A recent observation time (60s ago), captured per call, so default fixtures
+ * are ALWAYS inside the serve-suppress horizon regardless of when the test or
+ * the serialization audit runs. Serve-gate boundary behaviour is exercised by
+ * boardServingGate.test.ts, which supplies explicit line_observed_at values
+ * relative to an INJECTED serve_now — never by real waiting.
+ */
+export function freshObservedAt(): string {
+  return new Date(Date.now() - 60_000).toISOString();
 }
 
 /**
