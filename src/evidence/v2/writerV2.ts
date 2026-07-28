@@ -28,9 +28,11 @@
 
 import type { Tx } from '../../db/transaction.js';
 import type { EvidenceProfileInput } from '../types.js';
+import type { ThresholdWindowResult } from '../../computation/types.js';
 import type { V2ClassifiedResult } from './engineV2.js';
 import type { EvidenceProfileAuditRefs } from '../writer.js';
 import { EVIDENCE_RESERVED_REASON_CODES } from '../../shared/enums.js';
+import { deriveSourceIdentitySet } from './sourceIdentity.js';
 
 export const EVIDENCE_METHOD_VERSION_V2 = 'evidence_method_v2' as const;
 export type EvidenceMethodVersionV2 = typeof EVIDENCE_METHOD_VERSION_V2;
@@ -215,6 +217,83 @@ export async function writeV2EvidenceProfile(
       );
     }
   }
+  // ---- V1-8a0: persist the writer-bound evidence INPUTS, EXACTLY as received --
+  //
+  // SAME-EVALUATION-EVENT: the window aggregates are read from the SAME `input`
+  // object that produced `result`, written under the SAME `evidence_profile_id`,
+  // within the SAME transaction. This invariant holds because the single caller
+  // (`populateV2`) passes the very `input` it classified — it is NOT guaranteed
+  // by this signature, which still accepts `input` and `result` as INDEPENDENT
+  // parameters; the invariant is ENFORCED BY TEST, not by construction. (A
+  // governor ruling on restructuring the signature to carry both as one
+  // parameter is pending and is out of scope for this ticket.)
+  //
+  // The writer performs NO recomputation, derivation, rounding, reordering, or
+  // enrichment of the window bundle — only schema mapping (persistence fidelity).
+  // REPLACE (delete-then-insert), mirroring the reason-set contract, so a
+  // same-version repopulation refreshes the bundle instead of duplicating rows.
+  await tx.query(
+    `DELETE FROM evidence_profile_window_aggregates WHERE evidence_profile_id = $1::uuid`,
+    [evidence_profile_id]
+  );
+  const w = input.threshold_windows;
+  for (const win of [w.L5, w.L10, w.L20, w.season] as ReadonlyArray<ThresholdWindowResult>) {
+    const iw = await tx.query(
+      `INSERT INTO evidence_profile_window_aggregates
+         (evidence_profile_id, window_type, evaluated_line,
+          requested_n, eligible_n, incomplete,
+          count_above, count_equal, count_below,
+          avg_stat_value, median_stat_value, avg_minus_threshold, median_minus_threshold,
+          current_streak_direction, current_streak_length,
+          coverage_label, window_method_version, includes_backfilled_historical)
+       VALUES ($1::uuid, $2::text, $3,
+               $4, $5, $6,
+               $7, $8, $9,
+               $10, $11, $12, $13,
+               $14, $15,
+               $16, $17, $18)`,
+      [
+        evidence_profile_id, win.window_type, win.threshold,
+        win.requested_n, win.eligible_n, win.incomplete,
+        win.count_above, win.count_equal, win.count_below,
+        win.avg_stat_value, win.median_stat_value, win.avg_minus_threshold, win.median_minus_threshold,
+        win.current_streak_direction, win.current_streak_length,
+        win.coverage_label, win.method_version, win.includes_backfilled_historical,
+      ]
+    );
+    if ((iw.rowCount ?? 0) !== 1) {
+      throw new Error(
+        `V1-8a0 v2 writer: window-aggregate INSERT affected ${iw.rowCount ?? 0} rows for ` +
+        `(profile=${evidence_profile_id}, window=${win.window_type}); expected 1. Rolling back.`
+      );
+    }
+  }
+
+  // ---- V1-8a0: persist the SOURCE-IDENTITY SET (names/IDs only) ---------------
+  // Built server-side from the population-time offering context. Identity-only:
+  // no point/price/side/timestamp/handle. Dedup + alphabetical (non-economic).
+  await tx.query(
+    `DELETE FROM evidence_profile_source_identities WHERE evidence_profile_id = $1::uuid`,
+    [evidence_profile_id]
+  );
+  const sources = deriveSourceIdentitySet(input.current_market_row.book_detail.offerings);
+  let ordinal = 0;
+  for (const s of sources) {
+    const is = await tx.query(
+      `INSERT INTO evidence_profile_source_identities
+         (evidence_profile_id, normalized_source_id, display_name, ordinal)
+       VALUES ($1::uuid, $2::text, $3::text, $4::int)`,
+      [evidence_profile_id, s.normalized_source_id, s.display_name, ordinal]
+    );
+    if ((is.rowCount ?? 0) !== 1) {
+      throw new Error(
+        `V1-8a0 v2 writer: source-identity INSERT affected ${is.rowCount ?? 0} rows for ` +
+        `(profile=${evidence_profile_id}, source=${s.normalized_source_id}); expected 1. Rolling back.`
+      );
+    }
+    ordinal += 1;
+  }
+
   return Object.freeze({
     evidence_profile_id, inserted, reasons_written: output.reasons.length,
   });
