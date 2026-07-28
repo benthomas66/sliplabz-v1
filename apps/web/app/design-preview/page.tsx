@@ -63,6 +63,13 @@ export default async function DesignPreviewPage() {
       <h1>{DESIGN_PREVIEW_HEADING}</h1>
       <p style={{ color: '#555', marginTop: 0 }}>{DESIGN_PREVIEW_SUBHEADING}</p>
 
+      {/* V1-6f — two-link index to the design-review row variants. The baseline
+          render below is unchanged. */}
+      <nav data-testid="variant-index" style={{ display: 'flex', gap: 14, margin: '0.75rem 0' }}>
+        <a href="/design-preview/a">Variant A — compact exact</a>
+        <a href="/design-preview/b">Variant B — two-line evidence</a>
+      </nav>
+
       <BoardTable projections={projections} />
 
       <section style={{ marginTop: '2.5rem' }}>

@@ -94,6 +94,23 @@ test('V1-6e isolation: the deployed production /board carries NO preview banner'
   assert.ok(!html.includes('DESIGN PREVIEW'), 'preview banner leaked onto the deployed /board route');
 });
 
+// V1-6f — the deployed design-variant sub-pages (the founder taps these).
+const V6F_COMPACT_LABELS = ['Over-leaning', 'Under-leaning', 'Mixed', 'Insufficient Evidence', 'Unavailable'];
+const V6F_FULL_FORBIDDEN = ['Strong Over Evidence', 'Moderate Over Evidence', 'Strong Under Evidence', 'Moderate Under Evidence', 'Mixed Evidence'];
+for (const seg of ['a', 'b']) {
+  test(`V1-6f deployed /design-preview/${seg}: banner, populated, exact §D.2 labels, prohibited/full-form absent`, { skip }, async () => {
+    const res = await fetch(`${BASE!.replace(/\/$/, '')}/design-preview/${seg}`);
+    const html = await res.text();
+    assert.equal(res.status, 200, `deployed /design-preview/${seg} returned ${res.status}`);
+    assert.ok(html.includes('DESIGN PREVIEW'), `variant ${seg} banner missing`);
+    assert.ok(html.includes('__next_f'), `variant ${seg} flight marker absent`);
+    for (const l of V6F_COMPACT_LABELS) assert.ok(html.includes(l), `variant ${seg} missing §D.2 label "${l}"`);
+    for (const f of V6F_FULL_FORBIDDEN) assert.ok(!html.includes(f), `variant ${seg} leaked full label "${f}"`);
+    for (const bad of PROHIBITED) assert.ok(!html.includes(bad), `prohibited "${bad}" in variant ${seg}`);
+    for (const s of SECRET_MARKERS) assert.ok(!html.includes(s), `secret "${s}" in variant ${seg}`);
+  });
+}
+
 test('deployed client bundles: no db code, no secrets, no prohibited values', { skip }, async () => {
   const html = await (await fetch(boardUrl())).text();
   const rel = [...html.matchAll(/\/_next\/static\/[^"'()\s]+?\.js/g)].map((m) => m[0]);

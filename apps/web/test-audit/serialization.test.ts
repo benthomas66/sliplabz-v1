@@ -136,6 +136,37 @@ test('V1-6e isolation: the preview banner NEVER appears on the production /board
   assert.ok(!html.includes('DESIGN PREVIEW'), 'preview banner leaked onto the production /board route');
 });
 
+// V1-6f — the two design-variant sub-pages: exact §D.2 taxonomy, banner,
+// populated, prohibited absent.
+const COMPACT_LABELS = ['Over-leaning', 'Under-leaning', 'Mixed', 'Insufficient Evidence', 'Unavailable'];
+const FULL_LABELS_FORBIDDEN_ON_BOARD = ['Strong Over Evidence', 'Moderate Over Evidence', 'Strong Under Evidence', 'Moderate Under Evidence', 'Mixed Evidence'];
+for (const route of ['/design-preview/a', '/design-preview/b']) {
+  test(`V1-6f ${route}: banner + populated + exact §D.2 compact labels; prohibited/full-form absent`, async () => {
+    const html = await (await fetch(`http://localhost:${FIXTURE_PORT}${route}`)).text();
+    assert.ok(html.includes('DESIGN PREVIEW'), `${route} banner missing`);
+    assert.ok(html.includes('__next_f'), `${route} RSC flight marker absent`);
+    // POSITIVE CONTROL: a populated board with real cap + provenance furniture.
+    for (const ctl of POSITIVE_CONTROLS) {
+      assert.ok(html.includes(ctl), `${route} positive control "${ctl}" missing — board not populated`);
+    }
+    // The five §D.2 compact labels are the ONLY classification strings on the pills.
+    for (const l of COMPACT_LABELS) {
+      assert.ok(html.includes(l), `${route} missing §D.2 compact label "${l}"`);
+    }
+    // The full (Discover/Research-View) forms MUST NOT appear on the dense Board.
+    for (const f of FULL_LABELS_FORBIDDEN_ON_BOARD) {
+      assert.ok(!html.includes(f), `${route} leaked full label "${f}" onto the dense Board`);
+    }
+    // GD-15 distinct treatments are actually rendered.
+    assert.ok(html.includes('pill-insufficient'), `${route} missing distinct Insufficient treatment`);
+    assert.ok(html.includes('pill-unavailable'), `${route} missing distinct Unavailable treatment`);
+    // Fixture canaries never reach the browser from the variant pages.
+    for (const bad of PROHIBITED) {
+      assert.ok(!html.includes(bad), `prohibited value "${bad}" leaked into ${route}`);
+    }
+  });
+}
+
 test('client JS bundles contain no prohibited value, no db driver code, no connection string, no env var name', () => {
   const files = walk(join(APP_DIR, '.next', 'static')).filter((f) => f.endsWith('.js'));
   assert.ok(files.length > 0, 'no client bundles found to scan');
