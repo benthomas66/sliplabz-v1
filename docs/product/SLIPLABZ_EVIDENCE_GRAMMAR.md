@@ -1,8 +1,12 @@
-# SlipLabz — Evidence Grammar v1.1
+# SlipLabz — Evidence Grammar v1.3
 ## The governing design authority for surface vocabulary
 
-**Status:** AUTHORIZED — founder ruling 2026-07-28. Governing UX design authority.
-**Supersedes:** Evidence Grammar v1; the primitive sketches in Design Direction v1 §2.
+**Status:** AUTHORIZED — founder rulings 2026-07-28. Governing UX design authority.
+**Supersedes:** Evidence Grammar v1.2, v1.1, v1; the primitive sketches in Design Direction v1 §2.
+
+**v1.3 amendment summary.** Clarifies the Evidence Strip's scope and authorizes the Value Chart. v1.2 §2.2 declared the Strip canonical "everywhere… No exceptions," which over-reached: a detailed analytical chart showing raw values with chronology and line-relative context is a different, richer representation of the same series, and was inadvertently forbidden. v1.3 scopes the Strip to **compact line-relative outcome** representation and adds **§2.10 VALUE CHART** as a Research View **component** (not a primitive).
+
+**v1.2 amendment summary (retained).** v1.1 defined `passed-near-threshold` as a gate *state*, and separately authored six near-threshold rules — four of which described proximity from the **fired** side. A state that only exists on the passed side cannot carry fired-side proximity. v1.2 corrects this: **near-threshold becomes an orthogonal modifier on the outcome, never an outcome itself.** One-sided offering is additionally removed from the authorized set (its gate does not retain the per-side count a discrete proximity rule requires, and deriving one would reach into paid per-book offerings). §8.1 now holds five rules; §8.2 holds five gates.
 
 ### Division of authority
 
@@ -15,7 +19,7 @@ This document is an **independently authorized surface-vocabulary extension, int
 - does not weaken a required long-form disclosure;
 - does not introduce probability, rate, forecast, confidence, EV, or pick framing.
 
-**Future tickets must cite BOTH authorities wherever a Grammar-authorized surface form is used** (e.g. "§D.2 for the classification label; Evidence Grammar §7 for the compact count form").
+**Future tickets must cite BOTH authorities wherever a Grammar-authorized surface form is used.**
 
 ---
 
@@ -44,7 +48,7 @@ Every primitive obeys all of these. A candidate that cannot is not a primitive.
 5. **Sample size is never hidden.**
 6. **Discrete states only.**
 7. **Reused across at least two surfaces.** A one-off is a component, not a primitive.
-8. **Primitive proliferation is a design failure.** Every new feature asks *"which existing primitive expresses this?"* before inventing one. Adding to this alphabet requires a stated reason that no existing primitive can carry the meaning.
+8. **Primitive proliferation is a design failure.** Every new feature asks *"which existing primitive expresses this?"* before inventing one.
 
 ---
 
@@ -62,19 +66,35 @@ Every primitive obeys all of these. A candidate that cannot is not a primitive.
 ### 2.2 EVIDENCE STRIP
 *The defining primitive of SlipLabz.*
 
-- **The canonical representation of historical evidence, everywhere in the application** — the user's **first mental model** for what historical evidence looks like. If historical evidence exists on a surface, it appears as a Strip. Users should recognize it without reading a label.
+- **The canonical COMPACT representation of historical LINE-RELATIVE OUTCOMES** — the user's **first mental model** for what historical evidence looks like at a glance. Wherever historical evidence is summarized in limited space — board rows, window cards, filtered views, H2H — the Strip is the required form. Users should recognize it without reading a label.
+- **Scope (v1.3):** "line-relative outcomes" is deliberate. A detailed surface may additionally show raw statistics that are not themselves an over/under outcome (minutes, field goals made); those are the VALUE CHART's domain (§2.10), not the Strip's.
 - **Data:** the per-game series — one cell per game in the window, oldest→newest.
 - **Cell states:** filled = above · hollow = below · dash = push · ghost outline = DNP/ineligible (holds position, carries no verdict).
 - **Preserves what a percentage destroys:** sequence, clustering, streaks, volatility, missing observations, and sample size — the cell count *is* `eligible_n`.
-- **Never:** aggregates into a rate; reorders; omits ineligible games (their absence is information); scales cell size by anything.
-- **Appears:** everywhere historical evidence appears. No exceptions.
+- **Never:** aggregates into a rate; reorders; omits ineligible games; scales cell size by anything.
+- **Appears:** wherever historical line-relative outcomes are summarized compactly.
+
+### 2.10 VALUE CHART — *detailed analytical surfaces; a COMPONENT, not a primitive*
+
+Detailed analytical surfaces MAY present an inspectable value chart. It MUST preserve:
+
+- **chronology** — oldest→newest, never reordered;
+- **raw values** — never normalized into a rate;
+- **DNP and ineligible observations** — rendered as distinct non-verdict placeholders, never omitted;
+- **the evaluated line** — shown as an explicit reference whenever the chart is line-relative;
+- **touch inspection** — disclosure level 3 (§4);
+- **factual component decomposition** for combination markets **only when source data supports it** — never an invented decomposition.
+
+It obeys all universal rules (§1) and the color system (§5).
+
+**It is a component, not a primitive.** §1 rule 7 (two-surface reuse) does not apply, and it does not enter the alphabet. Should it later appear on a second surface, it is promoted to a primitive and specified here at that time.
 
 ### 2.3 MARGIN GLYPH
 *The distribution of distance from the line.*
 
 - **Data:** per-game margins (stat value − line) from the same series.
 - **Form:** a compact dot-plot on a centered axis — one dot per eligible game, zero-line marked, median indicated. Clustering and outliers stay visible as themselves.
-- **Why distribution over summary:** "usually just over" and "wildly variable, averages just over" share an average and are different evidence. Per §0.1 this generalizes: **collapse a distribution only when density forces it, and say so.**
+- **Why distribution over summary:** "usually just over" and "wildly variable, averages just over" share an average and are different evidence.
 - **Fallback (documented concession):** median tick + interquartile band. Never a bare average.
 - **Appears:** Board row (compact), window cards, Research View evidence panel.
 
@@ -91,7 +111,27 @@ Every primitive obeys all of these. A candidate that cannot is not a primitive.
 
 - **Purpose:** this is not a diagnostic widget. Most analytical software hides its reasoning; ours exposes it. **Over time, users should begin predicting why classifications change before the application tells them.** That is the measure of a transparent system.
 - **Data:** the quality-rule evaluation and ranked reason set.
-- **States (discrete):** passed · passed-near-threshold *(only where §8 authorizes a near-threshold rule)* · fired (binding) · fired (non-binding) · not-applicable.
+
+**OUTCOME (discrete, exhaustive) — the gate's actual result:**
+
+  `passed` · `fired_binding` · `fired_non_binding` · `not_applicable`
+
+**PROXIMITY MODIFIER (orthogonal; authorized gates only) — never an outcome:**
+
+  `near_threshold: boolean` plus, when true, an authority-owned `near_threshold_message`.
+
+Where §8.1 authorizes a near rule and the rule's exact condition holds, the gate carries `near_threshold: true` and its message. Everywhere else — including all §8.2 gates — `near_threshold` is false and no proximity message exists.
+
+**THE OUTCOME IS ALWAYS STATED FIRST.** Near-threshold must never replace, soften, or obscure the gate's actual result.
+
+> **Authorized:** *"L10 sample sufficiency — 4 of 5 required — fired. One additional eligible game would satisfy the minimum."*
+>
+> **Not authorized:** *"L10 sample sufficiency — nearly passed."*
+
+The second weakens the actual result and turns proximity into persuasion.
+
+**The modifier is a boolean governed by a gate-specific, authority-authored rule.** It is NOT a percentage, a distance score, a gradient, a continuous meter, or a generalized calculation of "closeness." No component may infer degrees — no *very near*, *somewhat near*, *80% of the way*, *almost strong*, *close to flipping*. **A gate is either within its explicitly authorized discrete boundary or it is not.**
+
 - **Carries:** gate name in authority wording, actual value, threshold — *"Book coverage — 5 of 4 required — passed."*
 - **Composed into the GATE PANEL**, which is never hidden and never collapsed by default.
 - **Appears:** Research View gate panel; compact roll-up on Board rows (the cap notch is its smallest form).
@@ -100,7 +140,7 @@ Every primitive obeys all of these. A candidate that cannot is not a primitive.
 *Age as a first-class, live element.*
 
 - **Data:** `line_observed_at`, display age at serve time, freshness state, D-A1 boundaries.
-- **States (the only authorized states):** current · aging · stale-present · beyond-horizon (historical inspection only). **No near-threshold state** — see §8.
+- **States (the only authorized states):** current · aging · stale-present · beyond-horizon (historical inspection only). **No proximity modifier** — see §8.2.
 - **Form:** state + elapsed time, desaturating toward the horizon. **Desaturation, not a shift to red** — aging is context, not danger.
 - **Never:** hover-only; absent when aged; worded to imply currency.
 - **Appears:** Board rows, Research View header, any surface showing a persisted finding.
@@ -123,15 +163,9 @@ Every primitive obeys all of these. A candidate that cannot is not a primitive.
 
 ### 2.9 EVIDENCE RELATIONSHIPS — *future family; NOT AUTHORIZED FOR IMPLEMENTATION*
 
-Every primitive above describes a **property** of evidence. The grammar must also become capable of expressing **relationships between** pieces of evidence. Candidate relationships, named so the grammar is designed to accommodate them:
+Every primitive above describes a **property** of evidence. The grammar must also become capable of expressing **relationships between** pieces of evidence. Candidate relationships, named so the grammar accommodates them: agreement between windows · disagreement between windows · trend reversal · stability vs fragmentation · conflicting evidence.
 
-- **agreement** between windows
-- **disagreement** between windows
-- **trend reversal**
-- **stability** vs **fragmentation**
-- **conflicting evidence** (market direction opposing historical direction)
-
-The committed method already produces `WINDOWS_DISAGREE` and `MARKET_DISAGREES_WITH_HISTORY`, which shows the relationship layer is partly represented in the method. **That observation does NOT authorize implementation.** During the present phase: no projection fields, no engine behaviour, no components, no fixtures, and no tickets for this family. It is recorded so that layout, spacing, and composition decisions leave room for it rather than requiring retrofit.
+The committed method already produces `WINDOWS_DISAGREE` and `MARKET_DISAGREES_WITH_HISTORY`, showing the relationship layer is partly represented in the method. **That observation does NOT authorize implementation.** During the present phase: no projection fields, no engine behaviour, no components, no fixtures, and no tickets for this family.
 
 ---
 
@@ -154,7 +188,7 @@ The Board and the Research View are **two views into the same system** — same 
 | **1 — Orientation** | glance | Finding Mark, Strip, line, freshness |
 | **2 — Composition** | tap a primitive | counts (long form), sample size, margins, coverage |
 | **3 — Provenance** | tap an element within it | the individual game: date, opponent, home/away, value, margin, provenance |
-| **4 — Reasoning** | open gate/methodology panels | gates fired, gates near (where authorized), ranked reasons, score + components + method version |
+| **4 — Reasoning** | open gate/methodology panels | gate outcomes, authorized proximity modifiers, ranked reasons, score + components + method version |
 
 **PRODUCT PRINCIPLE — THE INVERSION.** As users investigate deeper they discover *more assumptions, more provenance, more limitations, more context* — **not increasing certainty.** Most tools grow more confident as you drill in; ours grows more explicit about where the evidence stops. This inversion binds every future surface.
 
@@ -195,33 +229,37 @@ Tickets using this form cite both §D.2 and this section.
 
 ---
 
-## 8. Gate near-threshold states (founder ruling 2026-07-28)
+## 8. Gate proximity modifiers (founder ruling 2026-07-28, amended v1.2)
 
-**Principle:** near-threshold behaviour is authored per gate from that gate's own semantics. **Implementation may never invent proximity.**
+**Principle:** proximity is authored per gate from that gate's own semantics. **Implementation may never invent proximity.** The modifier is orthogonal to the outcome (§2.5) and never replaces it.
 
-### 8.1 Authorized near-threshold definitions (six)
+### 8.1 Gates WITH an authorized proximity modifier (five)
 
-| Gate | Near-threshold rule |
-|---|---|
-| L10 sample sufficiency | one additional eligible game would satisfy the minimum |
-| Season sample sufficiency | one additional eligible game would satisfy the minimum |
-| Coverage span | within one day of the required span |
-| Book coverage | one additional eligible book would change the pass/fail state |
-| Push-heavy sample | one additional push would fire the cap |
-| One-sided offering | one additional eligible book quoting the missing side would clear it |
+Each rule below is exact. `near_threshold` is true ONLY when its stated condition holds, and the message is the authority's wording — components never author proximity prose.
 
-### 8.2 Gates with NO authorized near-threshold state (four)
+| Gate | Condition | Authorized message |
+|---|---|---|
+| **L10 sample sufficiency** | the gate is **fired**, and exactly one additional eligible game would satisfy the minimum | *One additional eligible game would satisfy the minimum.* |
+| **Season sample sufficiency** | the gate is **fired**, and exactly one additional eligible game would satisfy the minimum | *One additional eligible game would satisfy the minimum.* |
+| **Coverage span** | the gate is **fired**, and exactly one additional calendar day of qualifying coverage would satisfy the required span | *One additional day of qualifying coverage would satisfy the required span.* |
+| **Book coverage** | the gate is **fired**, and exactly one additional eligible book would satisfy the minimum | *One additional eligible book would satisfy the minimum.* |
+| **Push-heavy sample** | the gate is **passed**, and exactly one additional push — all other evaluated quantities held constant — would fire the cap | *One additional push would fire this cap.* |
 
-These report **passed / fired only**. A near state must not be manufactured for them.
+Push-heavy is the **only** currently authorized passed-side proximity rule. Coverage span does not use a proportional interval such as "within the final tenth."
+
+### 8.2 Gates with NO authorized proximity modifier (five)
+
+These report **outcome only**. `near_threshold` is false or absent per the projection contract; no proximity message may be generated; and the UI must not imply proximity through wording, styling, ordering, opacity, animation, or iconography.
 
 | Gate | Reason |
 |---|---|
-| **Freshness** | A proportional rule ("final tenth of the band") would be an arbitrary continuous proximity measure and conflicts with the Grammar's discrete-state defense. Freshness reports only its authorized states: current · aging · stale-present · beyond-horizon. A future authority amendment may define a concrete **discrete** warning interval using the actual D-A1 time boundaries. |
-| **Windows disagree** | "One window's direction flipping" is counterfactual unless the committed engine emits a deterministic, non-score-derived distance-to-state-change value. It does not. **Do not manufacture a near state from counterfactual recomputation.** |
+| **Freshness** | A proportional rule would be an arbitrary continuous proximity measure and conflicts with the discrete-state defense. Freshness reports only its authorized states: current · aging · stale-present · beyond-horizon. A future amendment may define a concrete **discrete** warning interval using the actual D-A1 time boundaries. |
+| **Windows disagree** | Proximity would be counterfactual unless the committed engine emits a deterministic, non-score-derived distance-to-state-change value. It does not. **Do not manufacture a near state from counterfactual recomputation.** |
 | **Market disagrees with history** | Proximity is score-derived; exposing it would leak restricted quantities outside the DR-19-authorized methodology area. |
 | **§C.10 Strong prerequisites** | Same: proximity is score-derived. Do not expose score proximity through a gate-state metaphor. |
+| **One-sided offering** *(moved here in v1.2)* | The committed gate evaluation preserves only the categorical result and does not retain the per-side count a discrete proximity rule requires. Deriving one would reach into paid per-book offering data the projection must drop. Do not reopen `book_detail.offerings`, recompute the gate inside the projection, modify the method evaluator, or approximate proximity from unrelated fields. |
 
-Where a user might expect proximity for the last two, use the plain disclosure:
+The restricted-quantity disclosure remains applicable to **Market disagrees with history** and **§C.10 Strong prerequisites**:
 
 > *Proximity is not displayed because it depends on restricted score-derived quantities.*
 
