@@ -20,31 +20,26 @@ import 'server-only';
 // Server-only, transaction pooler, no browser-reachable path. Method selection is
 // explicit, server-side, fail-loud on unknown (ACTIVE_BOARD_METHOD_VERSION discipline).
 //
-// GOVERNOR NOTE (V1-7b, 2026-07-27): the per-game SERIES reader (`readSeries`)
-// lives HERE in the app repository — the same one-owner-per-surface pattern
-// boardRepository/researchRepository already follow — NOT in the shared library.
-// It BORROWS committed semantics, it does not invent them: eligibility/DNP come
-// from the persisted `player_game_stats.eligibility_state` + `minutes_status`
-// (the stored output of `src/bdl/eligibility.ts computeEligibility`), and the
-// counted set is anchored to `historical_line_results` exactly as the committed
-// threshold-window reader is. If a SECOND surface ever needs this series it is
-// PROMOTED to the shared library at that point; one-owner-per-metric is
-// deferred, not abandoned.
+// GOVERNOR NOTE (V1-8a0b, 2026-07-28): the per-game historical-series reader was
+// PROMOTED out of this app repository into the shared, src-owned owner
+// `src/computation/historicalSeriesRead.ts` (`readHistoricalSeries`). The
+// Research View now CONSUMES it; it no longer owns the SQL or the semantics. The
+// eligibility/DNP semantics remain the persisted output of the committed
+// `src/bdl/eligibility.ts computeEligibility`, borrowed inside the shared reader.
 
 import type { SliplabzPool } from '../../../../../src/db/connection.js';
 import { withTransaction } from '../../../../../src/db/transaction.js';
 import { getBoardPool } from './db.js';
 import { makeReadModelInputBuilderV2Core } from '../../../../../src/evidence/driver/readModelInputBuilder.js';
+import { readHistoricalSeries } from '../../../../../src/computation/historicalSeriesRead.js';
 import type { EvidenceGrain } from '../../../../../src/evidence/driver/populate.js';
 import type { EvidenceProfileOutput, ComponentValues, AttachedReason } from '../../../../../src/evidence/types.js';
 import type {
   EvidenceClassification, EvidenceDirection, EvidenceQualityCapReason,
   EvidenceEvaluatedSourceKind, EvidenceReasonCode, EvidenceReasonCategory,
 } from '../../../../../src/shared/enums.js';
-import type { PlayerStatEligibility, BdlMinutesStatus } from '../../../../../src/shared/enums.js';
 import { assertKnownMethodVersion, type MethodVersion } from '../method.js';
-import type { ResearchCandidate, ResearchSeriesRow } from '../researchCandidate.js';
-import type { Tx } from '../../../../../src/db/transaction.js';
+import type { ResearchCandidate } from '../researchCandidate.js';
 
 /** The injected boundary. Production wires `PostgresResearchRepository`; tests
  *  wire an in-memory fixture implementing the SAME interface. */
@@ -185,7 +180,7 @@ export class PostgresResearchRepository implements ResearchRepository {
         // DR-19(c) — source the method + computation version from the PERSISTED
         // row (not the input param), fail-loud if the stored value is unknown.
         assertKnownMethodVersion(row.method_version);
-        const series = await this.readSeries(tx, internal_game_id, internal_player_id, market_key);
+        const series = await readHistoricalSeries(tx, internal_game_id, internal_player_id, market_key);
 
         return {
           method_version: row.method_version,
@@ -200,58 +195,5 @@ export class PostgresResearchRepository implements ResearchRepository {
         };
       });
     }
-  }
-
-  /**
-   * The per-game series, oldest-to-newest, over the player's games for this
-   * market. READ-ONLY. One row per game the player has a `player_game_stats`
-   * row for (a missing row is absence, never fabricated as DNP). `stat_value`
-   * and the backfilled flag come from the SAME `historical_line_results`
-   * eligible set the threshold windows use (so counted entries reconcile with
-   * the windows); `eligibility_state` + `minutes_status` are the VERBATIM
-   * committed values persisted on `player_game_stats`; the opponent label is a
-   * `teams` join. Nothing is re-derived; no write of any kind.
-   */
-  private async readSeries(
-    tx: Tx, internal_game_id: string, internal_player_id: string, market_key: string,
-  ): Promise<ReadonlyArray<ResearchSeriesRow>> {
-    const r = await tx.query(
-      `WITH hlr AS (
-         SELECT DISTINCT ON (internal_game_id)
-                internal_game_id, player_stat_value, provenance, computation_version
-           FROM historical_line_results
-          WHERE internal_player_id = $2::uuid
-            AND market_key = $3
-            AND coverage_state IN ('complete', 'single_book')
-          ORDER BY internal_game_id, computation_version DESC, computed_at DESC
-       )
-       SELECT to_char(g.scheduled_start_utc AT TIME ZONE 'UTC', 'YYYY-MM-DD') AS game_date_utc,
-              COALESCE(ot.display_name, '') AS opponent_label,
-              pgs.is_home AS is_home,
-              CASE WHEN hlr.internal_game_id IS NOT NULL THEN hlr.player_stat_value::float8 ELSE NULL END AS stat_value,
-              pgs.eligibility_state::text AS eligibility_state,
-              pgs.minutes_status::text AS minutes_status,
-              COALESCE(hlr.provenance = 'backfilled_historical', false) AS includes_backfilled_historical
-         FROM player_game_stats pgs
-         JOIN games g ON g.internal_game_id = pgs.internal_game_id
-         LEFT JOIN teams ot ON ot.internal_team_id = pgs.internal_opponent_team_id
-         LEFT JOIN hlr ON hlr.internal_game_id = pgs.internal_game_id
-        WHERE pgs.internal_player_id = $1::uuid
-        ORDER BY g.scheduled_start_utc ASC`,
-      [internal_player_id, internal_player_id, market_key],
-    );
-    // NOTE: $1 (series scope: the player's games) and $2 (hlr filter) are the
-    // same player id; internal_game_id is not filtered — the series spans the
-    // player's window, not just the anchor game.
-    void internal_game_id;
-    return (r.rows as ReadonlyArray<{
-      game_date_utc: string; opponent_label: string; is_home: boolean | null;
-      stat_value: number | null; eligibility_state: PlayerStatEligibility;
-      minutes_status: BdlMinutesStatus; includes_backfilled_historical: boolean;
-    }>).map((x) => ({
-      game_date_utc: x.game_date_utc, opponent_label: x.opponent_label, is_home: x.is_home,
-      stat_value: x.stat_value, eligibility_state: x.eligibility_state,
-      minutes_status: x.minutes_status, includes_backfilled_historical: x.includes_backfilled_historical,
-    }));
   }
 }
