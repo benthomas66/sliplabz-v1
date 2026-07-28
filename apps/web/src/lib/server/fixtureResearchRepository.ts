@@ -22,21 +22,15 @@ import type { ThresholdWindows, EvidenceProfileOutput, ComponentValues, Attached
 import type { CurrentMarketRow, CurrentOffering, OneSidedOfferingKind } from '../../../../../src/computation/types.js';
 import type {
   EvidenceClassification, EvidenceDirection, EvidenceQualityCapReason,
+  PlayerStatEligibility, BdlMinutesStatus,
 } from '../../../../../src/shared/enums.js';
 import { assertKnownMethodVersion, type MethodVersion } from '../method.js';
-import type { ResearchCandidate } from '../researchCandidate.js';
+import type { ResearchCandidate, ResearchSeriesRow } from '../researchCandidate.js';
 import type { ResearchRepository } from './researchRepository.js';
 import { DISTINCTIVE_PAID_BOOK, DISTINCTIVE_PAID_PRICE } from './fixtureRepository.js';
 
 const OBSERVED_AT = '2026-07-27T17:30:00.000Z';
 
-function games(vals: ReadonlyArray<number>, backfilledFrom = Infinity): ThresholdWindowGame[] {
-  return vals.map((v, i) => ({
-    game_date_utc: `2026-07-${String(20 - i).padStart(2, '0')}`,
-    player_stat_value: v,
-    is_backfilled_historical: i >= backfilledFrom,
-  }));
-}
 
 function makeWindows(threshold: number, g: ThresholdWindowGame[]): ThresholdWindows {
   return Object.freeze({
@@ -46,6 +40,47 @@ function makeWindows(threshold: number, g: ThresholdWindowGame[]): ThresholdWind
     season: computeThresholdWindow('season', threshold, g),
   });
 }
+
+interface SeriesSpecEntry {
+  readonly opponent: string;
+  readonly is_home: boolean | null;
+  readonly stat_value: number | null;
+  readonly eligibility_state: PlayerStatEligibility;
+  readonly minutes_status: BdlMinutesStatus;
+  readonly backfilled?: boolean;
+}
+
+/**
+ * Build the four threshold windows AND the per-game series from ONE spec so
+ * they RECONCILE by construction: the windows are computed from exactly the
+ * eligible entries (most-recent-first), and the counted series entries are the
+ * same rows. DNP/ineligible entries are ghosts — never in the window games.
+ */
+function buildSeriesAndWindows(threshold: number, spec: readonly SeriesSpecEntry[]): {
+  windows: ThresholdWindows; series: ResearchSeriesRow[];
+} {
+  const series: ResearchSeriesRow[] = spec.map((e, i) => ({
+    game_date_utc: `2026-06-${String(i + 1).padStart(2, '0')}`,
+    opponent_label: e.opponent, is_home: e.is_home, stat_value: e.stat_value,
+    eligibility_state: e.eligibility_state, minutes_status: e.minutes_status,
+    includes_backfilled_historical: e.backfilled ?? false,
+  }));
+  // Window games: eligible entries with a stat, MOST-RECENT-FIRST (the order the
+  // committed reader supplies to computeThresholdWindow).
+  const eligible = series.filter((s) => s.eligibility_state === 'eligible' && s.stat_value !== null);
+  const gamesMostRecentFirst: ThresholdWindowGame[] = eligible.slice().reverse().map((s) => ({
+    game_date_utc: s.game_date_utc, player_stat_value: s.stat_value!, is_backfilled_historical: s.includes_backfilled_historical,
+  }));
+  return { windows: makeWindows(threshold, gamesMostRecentFirst), series };
+}
+
+// Synthetic opponents (obviously not real WNBA teams).
+const OPP = ['Test Town', 'Mock Bay', 'Sample Falls', 'Preview Park', 'Synthetic Springs', 'Preview City'];
+function elig(stat: number, backfilled = false): SeriesSpecEntry {
+  return { opponent: OPP[stat % OPP.length]!, is_home: stat % 2 === 0, stat_value: stat, eligibility_state: 'eligible', minutes_status: 'played', backfilled };
+}
+const DNP: SeriesSpecEntry = { opponent: OPP[1]!, is_home: false, stat_value: null, eligibility_state: 'non_participation', minutes_status: 'dnp' };
+const PLAYED_INELIGIBLE: SeriesSpecEntry = { opponent: OPP[2]!, is_home: true, stat_value: null, eligibility_state: 'quarantined', minutes_status: 'played' };
 
 function paidOffering(point: number): CurrentOffering {
   return Object.freeze({
@@ -138,7 +173,7 @@ const GRAINS: ReadonlyArray<FixtureGrain> = [
     profile_output: profile({ classification: 'strong_over_evidence', direction: 'over', score: 0.7834, evaluated_line: 24.5, quality_cap_reason: 'none', backfilled: false,
       reasons: [{ reason_code: 'window_agreement_support', category: 'support', intra_category_rank: 1, contribution_magnitude: 0.66 },
                 { reason_code: 'positive_margin_support', category: 'support', intra_category_rank: 2, contribution_magnitude: 0.31 }] }),
-    windows: makeWindows(24.5, games([30, 28, 27, 26, 25, 29, 26, 31, 27, 28])),
+    ...buildSeriesAndWindows(24.5, [elig(30), elig(28), elig(27), elig(26), elig(25), elig(29), elig(26), elig(31), elig(27), elig(28), DNP, PLAYED_INELIGIBLE]),
     current_market_row: makeMarketRow({ consensus_point: 24.5, eligible_book_count: 6, points: [{ point: 24.5, book_count: 5 }, { point: 25.5, book_count: 1 }], min_point: 24.5, max_point: 25.5, first_point: 24.0, one_sided: 'neither' }),
     line_observed_at: OBSERVED_AT,
   }),
@@ -148,7 +183,7 @@ const GRAINS: ReadonlyArray<FixtureGrain> = [
     profile_output: profile({ classification: 'moderate_over_evidence', direction: 'over', score: 0.58, evaluated_line: 21.5, quality_cap_reason: 'stale_current_market', backfilled: false,
       reasons: [{ reason_code: 'stale_current_market', category: 'quality', intra_category_rank: 1, contribution_magnitude: null },
                 { reason_code: 'window_agreement_support', category: 'support', intra_category_rank: 1, contribution_magnitude: 0.61 }] }),
-    windows: makeWindows(21.5, games([26, 24, 23, 25, 22, 27, 24, 23, 25, 24])),
+    ...buildSeriesAndWindows(21.5, [elig(26), elig(24), elig(23), elig(25), elig(22), elig(27), elig(24), elig(23), elig(25), elig(24), DNP]),
     current_market_row: makeMarketRow({ consensus_point: 21.5, eligible_book_count: 5, points: [{ point: 21.5, book_count: 4 }, { point: 22.5, book_count: 1 }], min_point: 21.5, max_point: 22.5, first_point: 21.0, one_sided: 'neither' }),
     line_observed_at: OBSERVED_AT,
   }),
@@ -157,7 +192,7 @@ const GRAINS: ReadonlyArray<FixtureGrain> = [
     player: 'Research Center C', team: 'Mock Bay', evaluated_line: 8.5, tipoff_utc: '2026-07-28T00:00:00.000Z',
     profile_output: profile({ classification: 'moderate_under_evidence', direction: 'under', score: -0.5312, evaluated_line: 8.5, quality_cap_reason: 'none', backfilled: true,
       reasons: [{ reason_code: 'negative_margin_support', category: 'support', intra_category_rank: 1, contribution_magnitude: 0.34 }] }),
-    windows: makeWindows(8.5, games([6, 7, 8, 5, 9, 7, 6, 8, 7, 6], 6)), // last 4 backfilled
+    ...buildSeriesAndWindows(8.5, [elig(6), elig(7), elig(8), elig(5), elig(9), elig(7), elig(6, true), elig(8, true), elig(7, true), elig(6, true), DNP]),
     current_market_row: makeMarketRow({ consensus_point: 8.5, eligible_book_count: 5, points: [{ point: 8.5, book_count: 5 }], min_point: 8.5, max_point: 8.5, first_point: 8.5, one_sided: 'neither' }),
     line_observed_at: OBSERVED_AT,
   }),
@@ -166,7 +201,7 @@ const GRAINS: ReadonlyArray<FixtureGrain> = [
     player: 'Research Guard D', team: 'Sample Falls', evaluated_line: 5.5, tipoff_utc: '2026-07-28T00:30:00.000Z',
     profile_output: profile({ classification: 'mixed_evidence', direction: null, score: 0.04, evaluated_line: 5.5, quality_cap_reason: 'none', backfilled: false,
       reasons: [{ reason_code: 'windows_disagree', category: 'contradiction', intra_category_rank: 1, contribution_magnitude: null }] }),
-    windows: makeWindows(5.5, games([7, 4, 6, 5, 8, 3, 6, 5, 7, 4])),
+    ...buildSeriesAndWindows(5.5, [elig(7), elig(4), elig(6), elig(5), elig(8), elig(3), elig(6), elig(5), elig(7), elig(4)]),
     current_market_row: makeMarketRow({ consensus_point: 5.5, eligible_book_count: 4, points: [{ point: 5.5, book_count: 3 }, { point: 4.5, book_count: 1 }], min_point: 4.5, max_point: 5.5, first_point: 5.5, one_sided: 'neither' }),
     line_observed_at: OBSERVED_AT,
   }),
@@ -175,7 +210,7 @@ const GRAINS: ReadonlyArray<FixtureGrain> = [
     player: 'Research Guard E', team: 'Preview Park', evaluated_line: 2.5, tipoff_utc: '2026-07-28T01:00:00.000Z',
     profile_output: profile({ classification: 'strong_under_evidence', direction: 'under', score: -0.81, evaluated_line: 2.5, quality_cap_reason: 'none', backfilled: false,
       reasons: [{ reason_code: 'window_agreement_support', category: 'support', intra_category_rank: 1, contribution_magnitude: 0.72 }] }),
-    windows: makeWindows(2.5, games([1, 2, 0, 2, 1, 3, 1, 2, 0, 1])),
+    ...buildSeriesAndWindows(2.5, [elig(1), elig(2), elig(0), elig(2), elig(1), elig(3), elig(1), elig(2), elig(0), elig(1)]),
     current_market_row: makeMarketRow({ consensus_point: 2.5, eligible_book_count: 6, points: [{ point: 2.5, book_count: 6 }], min_point: 2.5, max_point: 2.5, first_point: 2.5, one_sided: 'neither' }),
     line_observed_at: OBSERVED_AT,
   }),
@@ -184,7 +219,7 @@ const GRAINS: ReadonlyArray<FixtureGrain> = [
     player: 'Research Forward F', team: 'Synthetic Springs', evaluated_line: 7.5, tipoff_utc: '2026-07-28T01:30:00.000Z',
     profile_output: profile({ classification: 'insufficient_evidence', direction: null, score: null, evaluated_line: 7.5, quality_cap_reason: 'none', backfilled: false,
       reasons: [{ reason_code: 'insufficient_l10_sample', category: 'quality', intra_category_rank: 1, contribution_magnitude: null }] }),
-    windows: makeWindows(7.5, games([8, 6, 9])), // only 3 games -> thin sample
+    ...buildSeriesAndWindows(7.5, [elig(8), elig(6), elig(9), DNP]),
     current_market_row: makeMarketRow({ consensus_point: 7.5, eligible_book_count: 3, points: [{ point: 7.5, book_count: 3 }], min_point: 7.5, max_point: 7.5, first_point: 7.5, one_sided: 'neither' }),
     line_observed_at: OBSERVED_AT,
   }),
@@ -193,7 +228,12 @@ const GRAINS: ReadonlyArray<FixtureGrain> = [
     player: 'Research Center G', team: 'Test Town', evaluated_line: null, tipoff_utc: '2026-07-28T02:00:00.000Z',
     profile_output: profile({ classification: 'unavailable', direction: null, score: null, evaluated_line: null, quality_cap_reason: 'none', backfilled: false,
       reasons: [{ reason_code: 'no_current_market', category: 'quality', intra_category_rank: 1, contribution_magnitude: null }] }),
-    windows: makeWindows(0, []), // no games -> no_data windows
+    windows: makeWindows(0, []),
+    series: [
+      { game_date_utc: '2026-06-01', opponent_label: 'Mock Bay', is_home: true, stat_value: 4, eligibility_state: 'eligible', minutes_status: 'played', includes_backfilled_historical: false },
+      { game_date_utc: '2026-06-02', opponent_label: 'Test Town', is_home: false, stat_value: 6, eligibility_state: 'eligible', minutes_status: 'played', includes_backfilled_historical: false },
+      { game_date_utc: '2026-06-03', opponent_label: 'Preview Park', is_home: null, stat_value: null, eligibility_state: 'non_participation', minutes_status: 'dnp', includes_backfilled_historical: false },
+    ],
     current_market_row: makeMarketRow({ consensus_point: null, eligible_book_count: 0, points: [], min_point: null, max_point: null, first_point: null, one_sided: null }),
     line_observed_at: null,
   }),
@@ -205,6 +245,16 @@ export const RESEARCH_FIXTURE_GRAINS = GRAINS.map((g) => ({
   market_key: g.market_key, label: g.label,
 }));
 
+// Grains 2 and 5 render as AGED (beyond the serve horizon) so the Research View
+// shows its aged/stale-historical marker; the rest render FRESH; grain 7 has no
+// observation (unknown freshness). Freshness is resolved at QUERY time so a
+// "fresh" grain is always within the horizon regardless of when it is viewed.
+const AGED_GAME_IDS: ReadonlySet<string> = new Set([
+  `eeee0000-0000-0000-0000-${String(2).padStart(12, '0')}`,
+  `eeee0000-0000-0000-0000-${String(5).padStart(12, '0')}`,
+]);
+const AGED_OBSERVED_AT = '2026-01-01T00:00:00.000Z'; // always > horizon in the past
+
 export class FixtureResearchRepository implements ResearchRepository {
   private readonly byKey: Map<string, ResearchCandidate>;
   constructor(grains: ReadonlyArray<FixtureGrain> = GRAINS) {
@@ -214,6 +264,12 @@ export class FixtureResearchRepository implements ResearchRepository {
     method: MethodVersion, internal_game_id: string, internal_player_id: string, market_key: string,
   ): Promise<ResearchCandidate | null> {
     assertKnownMethodVersion(method);
-    return this.byKey.get(`${internal_game_id}|${internal_player_id}|${market_key}`) ?? null;
+    const cand = this.byKey.get(`${internal_game_id}|${internal_player_id}|${market_key}`);
+    if (cand === undefined) return null;
+    if (cand.line_observed_at === null) return cand; // unknown freshness (grain 7)
+    const line_observed_at = AGED_GAME_IDS.has(internal_game_id)
+      ? AGED_OBSERVED_AT
+      : new Date(Date.now() - 60_000).toISOString(); // fresh: 60s ago
+    return { ...cand, line_observed_at };
   }
 }

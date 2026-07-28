@@ -26,6 +26,11 @@
         "name": "next"
       }
     ],
+    "baseUrl": ".",
+    "paths": {
+      "pg": ["node_modules/@types/pg", "node_modules/pg"],
+      "pg/*": ["node_modules/@types/pg/*", "node_modules/pg/*"]
+    },
     "types": [
       "node"
     ]

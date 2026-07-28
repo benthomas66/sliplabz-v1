@@ -33,7 +33,8 @@ import type {
   EvidenceEvaluatedSourceKind,
 } from '../../../../src/shared/enums.js';
 import type { ThresholdWindowResult } from '../../../../src/computation/types.js';
-import type { ResearchCandidate } from './researchCandidate.js';
+import type { PlayerStatEligibility, BdlMinutesStatus } from '../../../../src/shared/enums.js';
+import type { ResearchCandidate, ResearchSeriesRow } from './researchCandidate.js';
 
 // --- sub-shapes (counts only; no rates; no per-book offerings) ---
 
@@ -61,6 +62,32 @@ export interface ResearchReason {
   readonly category: EvidenceReasonCategory;
   readonly intra_category_rank: number;
   readonly contribution_magnitude: number | null;
+}
+
+/**
+ * ONE projected per-game series entry (oldest-to-newest). Counts/values/flags
+ * only — no rate, no percentage, no "hit" language. `outcome` is the SAME
+ * comparison the threshold window performs (stat vs the evaluated line), set
+ * ONLY for counted (eligible) entries; DNP/ineligible entries are chart ghosts
+ * with `outcome: null` and never enter the window tallies.
+ */
+export interface ResearchSeriesEntry {
+  readonly game_date_utc: string;
+  readonly opponent_label: string;
+  readonly is_home: boolean | null;
+  readonly stat_value: number | null;
+  readonly comparison_line: number | null; // the evaluated line (threshold)
+  readonly outcome: 'above' | 'below' | 'equal' | null;
+  /** True iff the committed `eligibility_state === 'eligible'` — the exact
+   *  committed test for "counts as window evidence". */
+  readonly counted: boolean;
+  /** Verbatim committed values (from player_game_stats), never re-derived. */
+  readonly eligibility_state: PlayerStatEligibility;
+  readonly minutes_status: BdlMinutesStatus;
+  /** Presentation grouping of the committed states (not a new definition):
+   *  eligible → 'eligible'; non_participation → 'did_not_play'; else 'ineligible'. */
+  readonly display_status: 'eligible' | 'did_not_play' | 'ineligible';
+  readonly includes_backfilled_historical: boolean;
 }
 
 export interface ResearchComponents {
@@ -112,6 +139,8 @@ export interface ResearchProjection {
     readonly L20: ResearchWindow;
     readonly season: ResearchWindow;
   };
+  // per-game series (oldest-to-newest) for the chart
+  readonly series: ReadonlyArray<ResearchSeriesEntry>;
   // current-market context (NO per-book offerings)
   readonly market_context: ResearchMarketContext;
   // provenance + disclosures
@@ -136,7 +165,7 @@ export const RESEARCH_PROJECTION_KEYS = [
   'player', 'team', 'market', 'evaluated_line', 'tipoff_utc', 'evaluated_source_kind',
   'classification', 'classification_label_full', 'direction',
   'quality_capped', 'quality_cap_reason', 'binding_cap_tag',
-  'reasons', 'windows', 'market_context',
+  'reasons', 'windows', 'series', 'market_context',
   'provenance_marker', 'disclosure_g1', 'disclosure_g2',
   'line_observed_at', 'composite_score', 'components',
   'method_version', 'computation_version',
@@ -155,6 +184,37 @@ export const RESEARCH_PROJECTION_FORBIDDEN_KEYS = [
  *  boundary. `null` stays null; full precision is retained on the candidate. */
 function round2(x: number | null): number | null {
   return x === null ? null : Math.round(x * 100) / 100;
+}
+
+/** Map a raw series row to a projected entry. `outcome` uses the SAME
+ *  comparison the threshold window performs (stat vs the evaluated line) and is
+ *  set ONLY for counted (eligible) rows — DNP/ineligible stay `null` ghosts. */
+function toSeriesEntry(r: ResearchSeriesRow, evaluated_line: number | null): ResearchSeriesEntry {
+  // "Counted as window evidence" = the committed eligibility test AND a stat to
+  // compare AND a line to compare it to (exactly what enters a threshold-window
+  // tally). counted ⟺ outcome !== null, so series and windows reconcile.
+  const counted = r.eligibility_state === 'eligible' && r.stat_value !== null && evaluated_line !== null;
+  const outcome: 'above' | 'below' | 'equal' | null =
+    counted
+      ? (r.stat_value! > evaluated_line! ? 'above' : r.stat_value! < evaluated_line! ? 'below' : 'equal')
+      : null;
+  const display_status: 'eligible' | 'did_not_play' | 'ineligible' =
+    r.eligibility_state === 'eligible' ? 'eligible'
+      : r.minutes_status === 'dnp' ? 'did_not_play'
+        : 'ineligible';
+  return {
+    game_date_utc: r.game_date_utc,
+    opponent_label: r.opponent_label,
+    is_home: r.is_home,
+    stat_value: r.stat_value,
+    comparison_line: evaluated_line,
+    outcome,
+    counted,
+    eligibility_state: r.eligibility_state,
+    minutes_status: r.minutes_status,
+    display_status,
+    includes_backfilled_historical: r.includes_backfilled_historical,
+  };
 }
 
 function toWindow(w: ThresholdWindowResult): ResearchWindow {
@@ -220,6 +280,8 @@ export function constructResearchProjection(c: ResearchCandidate): ResearchProje
       L20: toWindow(c.windows.L20),
       season: toWindow(c.windows.season),
     },
+
+    series: c.series.map((r) => toSeriesEntry(r, c.evaluated_line)),
 
     market_context: {
       consensus_point: cmr.line_consensus.consensus_point,

@@ -111,6 +111,38 @@ for (const seg of ['a', 'b']) {
   });
 }
 
+// V1-7b — deployed Research View. Canary adjustment: the composite score is
+// legitimately present here, so we assert paid-offering canaries + secrets
+// absent and the score is rounded (no full-precision), not the score-digits canary.
+test('V1-7b deployed /design-preview/research: index + a fresh grain + an aged grain', { skip }, async () => {
+  const base = BASE!.replace(/\/$/, '');
+  const idx = await (await fetch(`${base}/design-preview/research`)).text();
+  assert.ok(idx.includes('DESIGN PREVIEW') && idx.includes('Strong Over Evidence'), 'research index missing banner/links');
+
+  const fresh = await (await fetch(`${base}/design-preview/research/0`)).text();
+  assert.ok(fresh.includes('Strong Over Evidence'), 'full §D.2 label absent on fresh grain');
+  assert.ok(fresh.includes('0.78') && !fresh.includes('0.7834'), 'score must be rounded, not full precision');
+  assert.ok(fresh.includes('research-ranking score'), '§G.2 disclosure absent');
+  assert.ok(!fresh.includes(DISTINCTIVE_PAID_BOOK) && !fresh.includes(PAID_PRICE_DIGITS), 'paid canary leaked');
+  for (const s of SECRET_MARKERS) assert.ok(!fresh.includes(s), `secret ${s} leaked`);
+
+  const aged = await (await fetch(`${base}/design-preview/research/1`)).text();
+  assert.ok(aged.includes('Aged historical evidence') && aged.includes('not current market analysis'), 'aged marker missing/implies currency');
+});
+
+test('V1-7b deployed PRODUCTION /research/<grain>: renders real hosted data, no paid canary/secret', { skip: skip || (process.env['RESEARCH_GRAIN'] === undefined ? 'RESEARCH_GRAIN not set' : false) }, async () => {
+  const [g, p, m] = (process.env['RESEARCH_GRAIN'] ?? '').split(' ');
+  const res = await fetch(`${BASE!.replace(/\/$/, '')}/research/${g}/${p}/${m}`);
+  const html = await res.text();
+  assert.equal(res.status, 200, `deployed /research returned ${res.status}`);
+  assert.ok(html.includes('__next_f'), 'flight marker absent');
+  // Either a real profile (a full §D.2 label) or the authorized Unavailable state.
+  const rendered = /Strong Over Evidence|Moderate Over Evidence|Mixed Evidence|Moderate Under Evidence|Strong Under Evidence|Insufficient Evidence|Unavailable/.test(html);
+  assert.ok(rendered, 'production route rendered neither a profile nor the Unavailable state');
+  assert.ok(!html.includes(DISTINCTIVE_PAID_BOOK) && !html.includes(PAID_PRICE_DIGITS), 'paid canary leaked from production route');
+  for (const s of SECRET_MARKERS) assert.ok(!html.includes(s), `secret ${s} leaked from production route`);
+});
+
 test('deployed client bundles: no db code, no secrets, no prohibited values', { skip }, async () => {
   const html = await (await fetch(boardUrl())).text();
   const rel = [...html.matchAll(/\/_next\/static\/[^"'()\s]+?\.js/g)].map((m) => m[0]);

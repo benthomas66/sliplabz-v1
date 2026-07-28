@@ -167,6 +167,40 @@ for (const route of ['/design-preview/a', '/design-preview/b']) {
   });
 }
 
+// V1-7b — the preview Research View routes. CANARY ADJUSTMENT (stated in the
+// report): the composite score is LEGITIMATELY present on this surface (DR-19
+// Research View), so we do NOT assert the score-digits canary here. Instead we
+// assert: (a) the PAID per-book offering canaries are absent; (b) secrets are
+// absent; (c) the score shown is the ROUNDED value and the full-precision value
+// never appears.
+test('V1-7b /design-preview/research index: banner, grain links, no paid canaries/secrets', async () => {
+  const html = await (await fetch(`http://localhost:${FIXTURE_PORT}/design-preview/research`)).text();
+  assert.ok(html.includes('DESIGN PREVIEW'), 'research index banner missing');
+  assert.ok(html.includes('Strong Over Evidence') && html.includes('Unavailable'), 'grain links missing');
+  assert.ok(!html.includes(DISTINCTIVE_PAID_BOOK), 'paid book leaked into research index');
+  assert.ok(!html.includes(PAID_PRICE_DIGITS), 'paid price leaked into research index');
+});
+
+test('V1-7b /design-preview/research/0 (fresh): full §D.2 label, §G.2 adjacent score is ROUNDED; no paid/secret/full-precision', async () => {
+  const html = await (await fetch(`http://localhost:${FIXTURE_PORT}/design-preview/research/0`)).text();
+  assert.ok(html.includes('__next_f'), 'flight marker absent');
+  assert.ok(html.includes('Strong Over Evidence'), 'full §D.2 label absent');
+  assert.ok(html.includes('0.78'), 'rounded score absent');           // rounded present (legitimate)
+  assert.ok(!html.includes('0.7834'), 'FULL-PRECISION score leaked');  // full precision absent
+  assert.ok(html.includes('research-ranking score'), '§G.2 disclosure absent from grade detail');
+  assert.ok(!html.includes(DISTINCTIVE_PAID_BOOK), 'paid book leaked');
+  assert.ok(!html.includes(PAID_PRICE_DIGITS), 'paid price leaked');
+  for (const s of SECRETS) assert.ok(!html.includes(s), `secret ${s} leaked`);
+});
+
+test('V1-7b /design-preview/research/1 (aged): the aged-historical marker is in the SERVER-RENDERED body', async () => {
+  const html = await (await fetch(`http://localhost:${FIXTURE_PORT}/design-preview/research/1`)).text();
+  // Founder ruling: aged evidence is VISIBLE with an unmissable marker, not suppressed.
+  assert.ok(html.includes('Aged historical evidence'), 'aged marker missing from server body');
+  assert.ok(html.includes('not current market analysis'), 'aged marker must not imply currency');
+  assert.ok(!html.includes(DISTINCTIVE_PAID_BOOK), 'paid book leaked into aged grain');
+});
+
 test('client JS bundles contain no prohibited value, no db driver code, no connection string, no env var name', () => {
   const files = walk(join(APP_DIR, '.next', 'static')).filter((f) => f.endsWith('.js'));
   assert.ok(files.length > 0, 'no client bundles found to scan');

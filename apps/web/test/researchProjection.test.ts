@@ -194,11 +194,18 @@ function walk(dir: string): string[] {
   return out;
 }
 
-test('this ticket adds NO route/component: nothing under app/ references the research modules', () => {
+// V1-7a rendered nothing; V1-7b (the Research View) legitimately adds the
+// /research and /design-preview/research routes. The enduring invariant is that
+// research modules are wired ONLY under those research routes — NEVER under the
+// Board route (isolation preserved).
+test('research modules are wired only under the research routes, never under /board', () => {
   const appFiles = walk(join(APP, 'app'));
   for (const f of appFiles) {
     const src = readFileSync(f, 'utf8');
-    assert.ok(!/research(Projection|Candidate|Repository)/i.test(src), `${f} wires a research module — this ticket renders nothing`);
+    const wiresResearch = /research(Projection|Candidate|Repository)|ResearchView|researchFreshness/.test(src);
+    if (wiresResearch) {
+      assert.ok(/[/\\]research[/\\]|design-preview[/\\]research/.test(f), `${f} wires research outside a research route`);
+    }
   }
 });
 
