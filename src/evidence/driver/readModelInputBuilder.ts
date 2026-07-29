@@ -91,10 +91,13 @@ import { composeCurrentMarketRow } from '../../computation/currentMarketRow.js';
 import { composeCurrentMarketRowV2 } from '../v2/freshnessNeutralMarketRow.js';
 import { computeThresholdWindow } from '../../computation/thresholdWindows.js';
 import type { ThresholdWindowGame } from '../../computation/thresholdWindows.js';
+import { readHistoricalSeries } from '../../computation/historicalSeriesRead.js';
+import type { HistoricalSeriesRow } from '../../computation/historicalSeriesRead.js';
+import type { ThresholdWindowGameOutcome } from '../../computation/thresholdWindows.js';
 import { readHistoricalCoverageForPlayerMarket } from '../../computation/historicalCoverage.js';
 import { readMappingResolutionForGrain } from '../../computation/mappingResolution.js';
 import type { EvidenceGrain } from './populate.js';
-import type { EvidenceProfileInput, ThresholdWindows } from '../types.js';
+import type { EvidenceProfileInput, ThresholdWindows, EvidenceSeriesPosition } from '../types.js';
 import type { LaunchMarket } from '../marginNormalizers.js';
 import { LAUNCH_MARKETS } from '../marginNormalizers.js';
 import type { EvidenceProfileAuditRefs } from '../writer.js';
@@ -245,6 +248,21 @@ async function buildOneGrain(
     season: computeThresholdWindow('season', evaluated_line, games),
   });
 
+  // ---- Step 4b: the COMPLETE per-game series (V1-8a0a) ----------------------
+  //
+  // Requested chronology from the frozen V1-8a0b reader (ALL positions incl
+  // DNP/ineligible), joined to the eligible per-game threshold outcomes from the
+  // interface extension (`season.games_evaluated` — the full eligible slice), on
+  // the canonical `internal_game_id`. Same evaluation event: same `tx`, same
+  // grain, same `evaluated_line`. This is the AUTHORIZED JOIN; the writer does
+  // schema mapping only. No recomputation of any outcome here — the verdict is
+  // taken verbatim from the extension, the chronology verbatim from the reader.
+  const series = buildSeries(
+    await readHistoricalSeries(tx, grain.internal_game_id, grain.internal_player_id, market_key),
+    threshold_windows.season.games_evaluated,
+    evaluated_line,
+  );
+
   // ---- Step 5: RME-1 (historical coverage) --------------------------------
   const historical_coverage = await readHistoricalCoverageForPlayerMarket(
     tx,
@@ -283,6 +301,7 @@ async function buildOneGrain(
     evaluated_source_kind: 'sportsbook_consensus',
     evaluated_source_identifier: null,
     threshold_windows,
+    series,
     current_market_row: currentMarketRow,
     historical_coverage,
     mapping_resolution,
@@ -508,7 +527,8 @@ async function readHistoricalGamesForPlayerMarket(
         ORDER BY internal_game_id, internal_player_id, market_key,
                  computation_version DESC, computed_at DESC
      )
-     SELECT to_char(g.scheduled_start_utc AT TIME ZONE 'UTC', 'YYYY-MM-DD') AS game_date_utc,
+     SELECT latest.internal_game_id::text AS internal_game_id,
+            to_char(g.scheduled_start_utc AT TIME ZONE 'UTC', 'YYYY-MM-DD') AS game_date_utc,
             latest.player_stat_value::float8 AS player_stat_value,
             latest.provenance = 'backfilled_historical' AS is_backfilled_historical
        FROM latest
@@ -517,8 +537,71 @@ async function readHistoricalGamesForPlayerMarket(
     [internal_player_id, market_key]
   );
   return (r.rows as ReadonlyArray<{
+    internal_game_id: string;
     game_date_utc: string;
     player_stat_value: number;
     is_backfilled_historical: boolean;
   }>);
+}
+
+/**
+ * V1-8a0a — the AUTHORIZED JOIN. Associate each frozen requested-window position
+ * (from `readHistoricalSeries`, ALL positions oldest→newest) with its eligible
+ * per-game outcome (from the interface extension, `season.games_evaluated`), on
+ * the canonical `internal_game_id`. No recomputation: the chronology is verbatim
+ * from the reader, the verdict verbatim from the extension. DNP/ineligible
+ * positions (no eligible outcome) carry the discriminated `{kind:'ineligible'}`
+ * verdict and hold their chronological place.
+ */
+export function buildSeries(
+  requested: ReadonlyArray<HistoricalSeriesRow>,
+  eligibleOutcomes: ReadonlyArray<ThresholdWindowGameOutcome> | undefined,
+  evaluated_line: number,
+): ReadonlyArray<EvidenceSeriesPosition> {
+  // The interface extension ALWAYS populates games_evaluated on a production
+  // window; its absence is a contract fault, never an empty verdict set.
+  if (eligibleOutcomes === undefined) {
+    throw new Error(
+      'V1-8a0a series join: computeThresholdWindow did not expose games_evaluated (season). ' +
+      'The interface extension must populate it; refusing to fabricate an empty verdict set.'
+    );
+  }
+  const outcomeByGame = new Map<string, 'above' | 'below' | 'equal'>();
+  for (const ge of eligibleOutcomes) {
+    if (ge.internal_game_id === undefined) {
+      // The production populate path always threads the canonical id (Amendment
+      // 18); a missing id means the join key was lost — never synthesise one.
+      throw new Error('V1-8a0a series join: an eligible per-game outcome is missing internal_game_id (Amendment 18 join key lost).');
+    }
+    outcomeByGame.set(ge.internal_game_id, ge.outcome);
+  }
+  return Object.freeze(requested.map((r) => {
+    const outcome = outcomeByGame.get(r.internal_game_id);
+    const readerEligible = r.stat_value !== null;
+    // INVARIANT: the frozen reader's eligible set (stat_value non-null ⇔ a counted
+    // historical_line_results row) MUST equal the extension's eligible set (both
+    // keyed by internal_game_id under the SAME coverage predicate). A mismatch is
+    // a data-integrity fault, never silently repaired.
+    if (readerEligible !== (outcome !== undefined)) {
+      throw new Error(
+        `V1-8a0a series join: eligibility mismatch for game ${r.internal_game_id} ` +
+        `(reader stat_value ${readerEligible ? 'present' : 'null'}, extension outcome ` +
+        `${outcome === undefined ? 'absent' : 'present'}).`
+      );
+    }
+    const verdict: EvidenceSeriesPosition['verdict'] =
+      outcome !== undefined ? { kind: 'eligible', outcome } : { kind: 'ineligible' };
+    return Object.freeze({
+      internal_game_id: r.internal_game_id,
+      game_date_utc: r.game_date_utc,
+      opponent_label: r.opponent_label,
+      is_home: r.is_home,
+      stat_value: r.stat_value,
+      evaluated_line,
+      eligibility_state: r.eligibility_state,
+      minutes_status: r.minutes_status,
+      includes_backfilled_historical: r.includes_backfilled_historical,
+      verdict,
+    });
+  }));
 }

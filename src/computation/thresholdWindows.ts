@@ -17,9 +17,37 @@ import { methodVersionOf } from './computationVersion.js';
 import type { ThresholdWindowResult } from './types.js';
 
 export interface ThresholdWindowGame {
+  /** Canonical stable game identity (`games` PK). V1-8a0a AMENDMENT 18: threaded
+   *  UNCHANGED from the committed historical read so the per-game outcome exposed
+   *  for persistence carries the same canonical join key the frozen series reader
+   *  now carries. Not consumed by the aggregate math. OPTIONAL on the type so a
+   *  windows-only consumer that persists NO series (e.g. the app's fixture
+   *  research repository) may omit it without change; the production populate path
+   *  (`readHistoricalGamesForPlayerMarket`) ALWAYS supplies it, and the series
+   *  join (`buildSeries`) fails loud if an eligible outcome ever lacks it. */
+  readonly internal_game_id?: string | undefined;
   readonly game_date_utc: string;
   readonly player_stat_value: number;
   readonly is_backfilled_historical: boolean;
+}
+
+/**
+ * V1-8a0a SCOPE A (interface extension) — ONE already-computed per-game
+ * threshold-relative outcome, exposed SOLELY for persistence of the series.
+ * `outcome` is the SAME per-game comparison `computeThresholdWindow` already
+ * performs internally to build its counts (`> threshold` → above, `< threshold`
+ * → below, else equal). Nothing new is computed, no threshold/classification/
+ * score/semantic change; the value equals the transient the count loop uses.
+ */
+export interface ThresholdWindowGameOutcome {
+  /** Carried through UNCHANGED from `ThresholdWindowGame.internal_game_id`
+   *  (Amendment 18). `undefined` only for a windows-only caller that supplied no
+   *  id; the production populate path always carries it. The series join requires
+   *  it (fails loud otherwise). */
+  readonly internal_game_id?: string | undefined;
+  readonly game_date_utc: string;
+  readonly player_stat_value: number;
+  readonly outcome: 'above' | 'below' | 'equal';
 }
 
 const REQUESTED_BY_WINDOW: Readonly<Record<'L5' | 'L10' | 'L20' | 'season', number | null>> = Object.freeze({
@@ -51,11 +79,22 @@ export function computeThresholdWindow(
 
   let count_above = 0, count_equal = 0, count_below = 0;
   const values: number[] = [];
+  // V1-8a0a SCOPE A: retain (expose) the per-game outcome the count loop ALREADY
+  // determines — no new computation, the same `> / < / =` comparison that
+  // increments each counter. Order = eligible order (reverse-chron).
+  const games_evaluated: ThresholdWindowGameOutcome[] = [];
   for (const g of eligible) {
     values.push(g.player_stat_value);
-    if (g.player_stat_value > threshold) count_above += 1;
-    else if (g.player_stat_value < threshold) count_below += 1;
-    else count_equal += 1;
+    let outcome: 'above' | 'below' | 'equal';
+    if (g.player_stat_value > threshold) { count_above += 1; outcome = 'above'; }
+    else if (g.player_stat_value < threshold) { count_below += 1; outcome = 'below'; }
+    else { count_equal += 1; outcome = 'equal'; }
+    games_evaluated.push(Object.freeze({
+      internal_game_id: g.internal_game_id,
+      game_date_utc: g.game_date_utc,
+      player_stat_value: g.player_stat_value,
+      outcome,
+    }));
   }
   const avg = eligible_n === 0 ? null : round4(values.reduce((a, b) => a + b, 0) / eligible_n);
   const med = eligible_n === 0 ? null : round4(median(values));
@@ -96,5 +135,6 @@ export function computeThresholdWindow(
     coverage_label,
     method_version: methodVersionOf('threshold_window'),
     includes_backfilled_historical: eligible.some((g) => g.is_backfilled_historical),
+    games_evaluated: Object.freeze(games_evaluated),
   });
 }

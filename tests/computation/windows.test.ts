@@ -78,11 +78,11 @@ describe('real-line window aggregate — §14', () => {
 describe('threshold window — A1 §9.2', () => {
   it('threshold=15.5: counts above/below/equal correctly', () => {
     const games = [
-      { game_date_utc: '2026-07-01', player_stat_value: 18, is_backfilled_historical: false },
-      { game_date_utc: '2026-06-28', player_stat_value: 15.5, is_backfilled_historical: false },
-      { game_date_utc: '2026-06-25', player_stat_value: 10, is_backfilled_historical: false },
-      { game_date_utc: '2026-06-22', player_stat_value: 20, is_backfilled_historical: false },
-      { game_date_utc: '2026-06-20', player_stat_value: 12, is_backfilled_historical: false },
+      { internal_game_id: 'g-1', game_date_utc: '2026-07-01', player_stat_value: 18, is_backfilled_historical: false },
+      { internal_game_id: 'g-2', game_date_utc: '2026-06-28', player_stat_value: 15.5, is_backfilled_historical: false },
+      { internal_game_id: 'g-3', game_date_utc: '2026-06-25', player_stat_value: 10, is_backfilled_historical: false },
+      { internal_game_id: 'g-4', game_date_utc: '2026-06-22', player_stat_value: 20, is_backfilled_historical: false },
+      { internal_game_id: 'g-5', game_date_utc: '2026-06-20', player_stat_value: 12, is_backfilled_historical: false },
     ];
     const r = computeThresholdWindow('L5', 15.5, games);
     assert.equal(r.eligible_n, 5);
@@ -96,10 +96,39 @@ describe('threshold window — A1 §9.2', () => {
     assert.equal(r.current_streak_length, 1);
   });
 
+  it('V1-8a0a SCOPE A: games_evaluated exposes the per-game outcomes ALREADY computed, aggregates value-equivalent', () => {
+    const games = [
+      { internal_game_id: 'g-1', game_date_utc: '2026-07-01', player_stat_value: 18, is_backfilled_historical: false },
+      { internal_game_id: 'g-2', game_date_utc: '2026-06-28', player_stat_value: 15.5, is_backfilled_historical: false },
+      { internal_game_id: 'g-3', game_date_utc: '2026-06-25', player_stat_value: 10, is_backfilled_historical: false },
+      { internal_game_id: 'g-4', game_date_utc: '2026-06-22', player_stat_value: 20, is_backfilled_historical: false },
+      { internal_game_id: 'g-5', game_date_utc: '2026-06-20', player_stat_value: 12, is_backfilled_historical: false },
+    ];
+    const r = computeThresholdWindow('season', 15.5, games);
+    // (1) One outcome per eligible game, SAME order, tagged with the canonical id.
+    assert.deepEqual(
+      r.games_evaluated!.map((x) => [x.internal_game_id, x.outcome]),
+      [['g-1', 'above'], ['g-2', 'equal'], ['g-3', 'below'], ['g-4', 'above'], ['g-5', 'below']],
+    );
+    // (2) The exposed outcomes RECONCILE with the aggregate counts (no new computation).
+    const above = r.games_evaluated!.filter((x) => x.outcome === 'above').length;
+    const below = r.games_evaluated!.filter((x) => x.outcome === 'below').length;
+    const equal = r.games_evaluated!.filter((x) => x.outcome === 'equal').length;
+    assert.equal(above, r.count_above);
+    assert.equal(below, r.count_below);
+    assert.equal(equal, r.count_equal);
+    // (3) player_stat_value carried verbatim; value-equivalence of the aggregates.
+    assert.deepEqual(r.games_evaluated!.map((x) => x.player_stat_value), [18, 15.5, 10, 20, 12]);
+    assert.equal(r.count_above, 2); assert.equal(r.count_below, 2); assert.equal(r.count_equal, 1);
+    // (4) L5 slice of the SAME games exposes exactly the eligible (sliced) subset.
+    const l5 = computeThresholdWindow('L5', 15.5, games);
+    assert.equal(l5.games_evaluated!.length, l5.eligible_n);
+  });
+
   it('threshold=15.5: partial → incomplete', () => {
     const games = [
-      { game_date_utc: '2026-07-01', player_stat_value: 18, is_backfilled_historical: false },
-      { game_date_utc: '2026-06-28', player_stat_value: 10, is_backfilled_historical: false },
+      { internal_game_id: 'g-1', game_date_utc: '2026-07-01', player_stat_value: 18, is_backfilled_historical: false },
+      { internal_game_id: 'g-2', game_date_utc: '2026-06-28', player_stat_value: 10, is_backfilled_historical: false },
     ];
     const r = computeThresholdWindow('L5', 15.5, games);
     assert.equal(r.eligible_n, 2);

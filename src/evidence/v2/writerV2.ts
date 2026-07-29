@@ -294,6 +294,53 @@ export async function writeV2EvidenceProfile(
     ordinal += 1;
   }
 
+  // ---- V1-8a0a: persist the COMPLETE per-game SERIES -------------------------
+  //
+  // The series was JOINED upstream (readModelInputBuilder Step 4b) in the SAME
+  // evaluation event: the same `input` object that produced `result`, the same
+  // grain, the same `evaluated_line`, within THIS transaction. After that join
+  // the writer performs SCHEMA MAPPING ONLY — NO reorder, recompute, normalize,
+  // infer, or repair. `ordinal` preserves the reader's chronological order (the
+  // array index); `position_kind`/`outcome` are the discriminated verdict mapped
+  // to the constrained storage state. REPLACE (delete-then-insert), mirroring the
+  // reason-set and window-aggregate contracts, so a same-version repopulation
+  // refreshes rather than duplicates.
+  //
+  // When `input.series` is absent (engine-only / pre-V1-8a0a callers) the series
+  // table is left UNTOUCHED — never wiped. The production builder always sets it.
+  if (input.series !== undefined) {
+    await tx.query(
+      `DELETE FROM evidence_profile_series WHERE evidence_profile_id = $1::uuid`,
+      [evidence_profile_id]
+    );
+    let series_ordinal = 0;
+    for (const pos of input.series) {
+      const position_kind = pos.verdict.kind === 'eligible' ? 'eligible' : 'ineligible';
+      const outcome = pos.verdict.kind === 'eligible' ? pos.verdict.outcome : null;
+      const sp = await tx.query(
+        `INSERT INTO evidence_profile_series
+           (evidence_profile_id, ordinal, internal_game_id, game_date_utc, opponent_label,
+            is_home, stat_value, evaluated_line, position_kind, outcome,
+            eligibility_state, minutes_status, includes_backfilled_historical)
+         VALUES ($1::uuid, $2::int, $3::uuid, $4::date, $5::text,
+                 $6, $7, $8, $9::text, $10,
+                 $11::player_stat_eligibility, $12::bdl_minutes_status, $13)`,
+        [
+          evidence_profile_id, series_ordinal, pos.internal_game_id, pos.game_date_utc, pos.opponent_label,
+          pos.is_home, pos.stat_value, pos.evaluated_line, position_kind, outcome,
+          pos.eligibility_state, pos.minutes_status, pos.includes_backfilled_historical,
+        ]
+      );
+      if ((sp.rowCount ?? 0) !== 1) {
+        throw new Error(
+          `V1-8a0a v2 writer: series-position INSERT affected ${sp.rowCount ?? 0} rows for ` +
+          `(profile=${evidence_profile_id}, game=${pos.internal_game_id}); expected 1. Rolling back.`
+        );
+      }
+      series_ordinal += 1;
+    }
+  }
+
   return Object.freeze({
     evidence_profile_id, inserted, reasons_written: output.reasons.length,
   });

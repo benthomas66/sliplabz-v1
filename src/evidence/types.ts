@@ -31,6 +31,8 @@ import type {
   EvidenceQualityCapReason,
   EvidenceReasonCategory,
   EvidenceReasonCode,
+  PlayerStatEligibility,
+  BdlMinutesStatus,
 } from '../shared/enums.js';
 import type { LaunchMarket } from './marginNormalizers.js';
 
@@ -47,6 +49,41 @@ export interface ThresholdWindows {
   readonly L10: ThresholdWindowResult;
   readonly L20: ThresholdWindowResult;
   readonly season: ThresholdWindowResult;
+}
+
+/**
+ * V1-8a0a — ONE persisted per-game series position. The chronology (all fields
+ * except `evaluated_line` and `verdict`) comes UNMODIFIED from the frozen
+ * V1-8a0b reader (`HistoricalSeriesRow`); the `verdict` comes from the authorized
+ * interface extension (`ThresholdWindowResult.games_evaluated`); the two are
+ * joined on the canonical `internal_game_id` at population time (same evaluation
+ * event). `internal_game_id` is SERVER-SIDE ONLY (Amendment 21).
+ *
+ * The verdict is a DISCRIMINATED type — an eligible position carries an
+ * authoritative threshold-relative outcome; an ineligible/DNP requested position
+ * carries NO verdict (its presence and chronological location are the evidence,
+ * Grammar §2.2). A consumer reads `verdict.kind` first; `outcome` exists only on
+ * the eligible variant, so it can never be misread as an unknown eligible value.
+ */
+export type SeriesPositionVerdict =
+  | { readonly kind: 'eligible'; readonly outcome: 'above' | 'below' | 'equal' }
+  | { readonly kind: 'ineligible' };
+
+export interface EvidenceSeriesPosition {
+  /** Canonical stable game identity — the join key + persisted row identity.
+   *  SERVER-SIDE ONLY (Amendment 21); never a browser-visible field. */
+  readonly internal_game_id: string;
+  readonly game_date_utc: string;
+  readonly opponent_label: string;
+  readonly is_home: boolean | null;
+  readonly stat_value: number | null;
+  /** The evaluated line this position's outcome is relative to (the profile's
+   *  threshold; same value the window aggregates were computed against). */
+  readonly evaluated_line: number;
+  readonly eligibility_state: PlayerStatEligibility;
+  readonly minutes_status: BdlMinutesStatus;
+  readonly includes_backfilled_historical: boolean;
+  readonly verdict: SeriesPositionVerdict;
 }
 
 /** Games.status per §C.8 (spec §15.5). */
@@ -81,6 +118,16 @@ export interface EvidenceProfileInput {
   /** §A.1 windows — all four required; each result must be computed
    *  against the SAME evaluated_line. */
   readonly threshold_windows: ThresholdWindows;
+
+  /** V1-8a0a — the complete per-game series (requested chronology from the
+   *  frozen V1-8a0b reader, joined to the eligible per-game outcomes on
+   *  `internal_game_id`), oldest→newest. Persisted alongside the window
+   *  aggregates in the SAME evaluation event. The ENGINE does NOT consume this;
+   *  it is a persistence-only field carried on the same input object so the
+   *  writer maps it under the same transaction. Optional on the type so the many
+   *  engine/fixture constructors that predate it remain valid; the production
+   *  builder (`readModelInputBuilder`) ALWAYS sets it. */
+  readonly series?: ReadonlyArray<EvidenceSeriesPosition>;
 
   /** §A.3 current market — composed via V1-5 read model. */
   readonly current_market_row: CurrentMarketRow;

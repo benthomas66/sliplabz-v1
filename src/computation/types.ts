@@ -5,6 +5,7 @@
 // proves identical outputs from identical inputs (ticket §9 required test).
 
 import type { FreshnessState } from '../shared/enums.js';
+import type { ThresholdWindowGameOutcome } from './thresholdWindows.js';
 
 /** One eligible sportsbook offering at the (game, player, market) grain. */
 export interface CurrentOffering {
@@ -214,6 +215,16 @@ export interface ThresholdWindowResult {
   readonly coverage_label: 'complete' | 'incomplete' | 'no_data';
   readonly method_version: number;
   readonly includes_backfilled_historical: boolean;
+  /** V1-8a0a SCOPE A (interface extension): the already-computed per-game
+   *  threshold-relative outcomes over this window's ELIGIBLE slice, in the same
+   *  reverse-chronological order, each tagged with its canonical `internal_game_id`
+   *  (Amendment 18). Exposed SOLELY for series persistence — the aggregate fields
+   *  above are byte-for-byte unchanged. For `season` this covers every eligible
+   *  game (the full slice). OPTIONAL on the type only so pre-existing
+   *  hand-built `ThresholdWindowResult` fixtures remain byte-identical;
+   *  `computeThresholdWindow` ALWAYS populates it, and the series join fails loud
+   *  if it is ever absent on a production window. */
+  readonly games_evaluated?: ReadonlyArray<ThresholdWindowGameOutcome>;
 }
 
 /**

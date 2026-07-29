@@ -18,16 +18,31 @@
 // CONNECTION: caller-supplied `Tx` (a transaction/client the caller owns), so
 // both the src population path and the apps/web Research View supply their own.
 //
-// CONTRACT: frozen for V1-8a0a (see V1_TICKET_8A0B_REPORT.md). Same rows, order,
-// fields, and semantics as the V1-7b implementation — this is a MOVE, not a change.
+// CONTRACT (RE-FROZEN under V1-8a0a AMENDMENT 21): all previously authorized
+// inputs, fields, ordering, nullability, eligibility semantics, provenance
+// semantics, and DNP semantics from V1-8a0b, PLUS exactly ONE added field —
+// `internal_game_id` — the canonical stable game identity (`games` PK), copied
+// UNCHANGED from the `player_game_stats` row already joined in the committed
+// query. No new read, no additional join, no synthesis, no date/opponent/ordinal
+// surrogate, no ordering/predicate/semantic change, no other field altered.
+//
+// `internal_game_id` is authorized SOLELY as (a) the population-time join key
+// between requested-window positions and eligible threshold-relative outcomes,
+// and (b) the persisted series row's stable identity. It is SERVER-SIDE ONLY —
+// it is NOT a browser projection field and remains on
+// RESEARCH_PROJECTION_FORBIDDEN_KEYS. No further contract change is authorized
+// inside V1-8a0a.
 
 import type { Tx } from '../db/transaction.js';
 import type { PlayerStatEligibility, BdlMinutesStatus } from '../shared/enums.js';
 
 /** ONE per-game historical-series row, oldest→newest. `stat_value` is null for
- *  games with no eligible line result (DNP / ineligible). Verbatim shape of the
- *  V1-7b app-side reader. */
+ *  games with no eligible line result (DNP / ineligible). V1-8a0b shape PLUS the
+ *  single Amendment-21 server-side-only canonical identity `internal_game_id`. */
 export interface HistoricalSeriesRow {
+  /** Canonical stable game identity (`games` PK). SERVER-SIDE ONLY (Amendment 21):
+   *  the join key + persisted-row identity; never a browser-visible field. */
+  readonly internal_game_id: string;
   readonly game_date_utc: string;
   readonly opponent_label: string;
   readonly is_home: boolean | null;
@@ -55,7 +70,8 @@ export async function readHistoricalSeries(
           AND coverage_state IN ('complete', 'single_book')
         ORDER BY internal_game_id, computation_version DESC, computed_at DESC
      )
-     SELECT to_char(g.scheduled_start_utc AT TIME ZONE 'UTC', 'YYYY-MM-DD') AS game_date_utc,
+     SELECT pgs.internal_game_id::text AS internal_game_id,
+            to_char(g.scheduled_start_utc AT TIME ZONE 'UTC', 'YYYY-MM-DD') AS game_date_utc,
             COALESCE(ot.display_name, '') AS opponent_label,
             pgs.is_home AS is_home,
             CASE WHEN hlr.internal_game_id IS NOT NULL THEN hlr.player_stat_value::float8 ELSE NULL END AS stat_value,
@@ -75,10 +91,12 @@ export async function readHistoricalSeries(
   // player's window, not just the anchor game.
   void internal_game_id;
   return (r.rows as ReadonlyArray<{
+    internal_game_id: string;
     game_date_utc: string; opponent_label: string; is_home: boolean | null;
     stat_value: number | null; eligibility_state: PlayerStatEligibility;
     minutes_status: BdlMinutesStatus; includes_backfilled_historical: boolean;
   }>).map((x) => ({
+    internal_game_id: x.internal_game_id,
     game_date_utc: x.game_date_utc, opponent_label: x.opponent_label, is_home: x.is_home,
     stat_value: x.stat_value, eligibility_state: x.eligibility_state,
     minutes_status: x.minutes_status, includes_backfilled_historical: x.includes_backfilled_historical,
