@@ -88,6 +88,7 @@ function candidate(
     l10_eligible_n: base.l10_eligible_n,
     eligible_sportsbook_count: base.eligible_sportsbook_count,
     internal_game_id: base.internal_game_id,
+    internal_player_id: `pppp0000-0000-0000-0000-${base.internal_game_id.slice(-12)}`,
     evidence_profile_id: `epid-${base.internal_game_id}`,
     method_version: method,
     line_observed_at: base.line_observed_at === undefined ? freshObservedAt() : base.line_observed_at,

@@ -35,6 +35,10 @@ export interface RankedCandidate {
   readonly l10_eligible_n: number;
   readonly eligible_sportsbook_count: number;
   readonly internal_game_id: string;
+  // V1-8a2: the grain player id — SERVER-SIDE only, used with internal_game_id +
+  // market to build the Board→Research navigation href server-side. A FORBIDDEN
+  // projection key (never a band/projection data field).
+  readonly internal_player_id: string;
 
   // ---- V1-8a1 SERVER-SIDE band inputs. NEVER projection keys. ----
   //   `evidence_profile_id` is the batched-bundle join key (Amendment 21 sibling

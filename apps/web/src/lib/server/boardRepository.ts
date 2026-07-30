@@ -181,6 +181,7 @@ function rowToCandidate(row: BoardQueryRow, method: MethodVersion): RankedCandid
     l10_eligible_n: 0,
     eligible_sportsbook_count: row.eligible_sportsbook_count,
     internal_game_id: row.internal_game_id,
+    internal_player_id: row.internal_player_id,
     evidence_profile_id: row.evidence_profile_id,
     // V1-8a1 SERVER-SIDE band context (consensus distribution/range/count +
     // freshness state) from the persisted current_market_row. Distribution is

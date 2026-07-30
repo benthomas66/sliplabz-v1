@@ -110,18 +110,67 @@ test('initial HTML document (incl. <script>) leaks no prohibited value; flight +
   }
 });
 
-test('V1-8a1: the information BAND reaches the flight (positive control) but the internal_game_id canary does NOT', async () => {
+test('V1-8a2 GAP-21: the band RENDERS server-side, but the series/band DATA never crosses as a client payload', async () => {
   const html = await (await fetch(`http://localhost:${FIXTURE_PORT}/board`)).text();
-  // POSITIVE CONTROL: the band IS serialized into the flight (BoardTable is a
-  // 'use client' component receiving the full projection), so the audit is not
-  // vacuous — the H2H typed-unavailable marker is a band-only string.
-  assert.ok(html.includes('requires_h2h_window_g2'), 'band H2H marker absent — the band did not reach the flight');
-  // NEGATIVE: the server-side-only identity canary is dropped by the projection.
+  // POSITIVE CONTROL: the band RENDERS (server component → HTML). Rendered
+  // artefacts are present, so the audit is not vacuous.
+  assert.ok(html.includes('>L10<') || html.includes('L10'), 'rendered window label L10 absent — band did not render');
+  assert.ok(html.includes('SZN'), 'rendered SZN strip label absent — band did not render');
+  assert.ok(html.includes('not yet available'), 'rendered H2H unavailable text absent — band did not render');
+  // GAP-21 NEGATIVE: the raw band DATA did NOT cross as a client-component prop.
+  // The projection's raw H2H reason string is server-rendered to different text,
+  // so the RAW data string must be absent from the served body/flight.
+  assert.ok(!html.includes('requires_h2h_window_g2'), 'raw band DATA (h2h.reason) crossed the client boundary — GAP-21 not closed');
+  // The server-side-only identity canary + its key are absent (Amendment 21).
   assert.ok(!html.includes(DISTINCTIVE_INTERNAL_GAME_ID), 'internal_game_id canary leaked into the /board body');
   assert.ok(!html.includes('internal_game_id'), 'internal_game_id key leaked into the /board body');
+  // A distinctive SERIES-only value never appears (series payload not shipped).
+  assert.ok(!html.includes('position_kind'), 'series structural key leaked into the /board body');
   // REVISE (§2.6): the freshness badge carries display_age (a duration) but NEVER
   // the raw line_observed_at timestamp — the key must not appear in the body.
   assert.ok(!html.includes('line_observed_at'), 'line_observed_at key leaked into the /board body');
+});
+
+test('V1-8a2 board surface: all eight band fields present, §D.2 labels only, §7 counts, locked architecture inert, no sort control', async () => {
+  const html = await (await fetch(`http://localhost:${FIXTURE_PORT}/board`)).text();
+  // (8) band completeness at 390px — all eight fields present in the DOM.
+  for (const f of ['L5', 'L10', 'L20', 'H2H', 'STRK', 'AVG', 'DIFF', 'SZN']) {
+    assert.ok(html.includes(f), `band field "${f}" absent from the served body`);
+  }
+  // (4) §D.2 compact labels present; the full Discover/Research forms never here.
+  for (const l of ['Over-leaning', 'Mixed', 'Unavailable']) assert.ok(html.includes(l), `§D.2 compact label "${l}" absent`);
+  for (const f of ['Strong Over Evidence', 'Moderate Over Evidence', 'Mixed Evidence']) {
+    assert.ok(!html.includes(f), `full label "${f}" leaked onto the dense Board`);
+  }
+  // (3) Grammar §7 — no %, no slash ratio between digits, no "rate" in the
+  // USER-VISIBLE TEXT (strip <script>/<style>/all tags so CSS %-widths, the RSC
+  // flight, and href slashes are excluded; §7 governs rendered data, not layout).
+  const visibleText = html
+    .replace(/<script[\s\S]*?<\/script>/g, ' ')
+    .replace(/<style[\s\S]*?<\/style>/g, ' ')
+    .replace(/<[^>]+>/g, ' ');
+  assert.ok(!visibleText.includes('%'), 'percentage present in visible Board text');
+  assert.ok(!/\d\s*\/\s*\d/.test(visibleText), 'slash ratio between digits present in visible Board text');
+  assert.ok(!/\brate\b/i.test(visibleText), '"rate" present in visible Board text');
+  // (7) no hover-only — disclosure, freshness, provenance, sample rendered in body.
+  assert.ok(html.includes('data-testid="disclosure-g1"'), '§G.1 disclosure not in server body');
+  assert.ok(html.includes('data-testid="freshness-badge"'), 'freshness badge not in server body');
+  assert.ok(html.includes('data-testid="sample-badge"'), 'sample badge not in server body');
+  // (11) locked architecture present and inert; non-actionable CTA is disabled.
+  assert.ok(html.includes('data-testid="locked-continuation"'), 'locked continuation absent');
+  assert.ok(html.includes('data-testid="lock-panel"'), 'lock panel absent');
+  assert.ok(html.includes('Membership coming later'), 'non-actionable CTA copy absent');
+  assert.ok(/data-testid="locked-cta"[^>]*\bdisabled\b/.test(html) || /\bdisabled\b[^>]*data-testid="locked-cta"/.test(html), 'locked CTA is not disabled (must be non-actionable)');
+  // (6) DR-20 sole sort — no alternate sort control in the markup.
+  assert.ok(!/<select/i.test(html), 'a <select> sort control exists');
+  assert.ok(!/sort by/i.test(html), 'an alternate sort control label exists');
+  // (11) real row count equals available profiles (4 v2 fixtures); no gating.
+  assert.ok(html.includes('data-row-count="4"'), 'rendered row count != available profile count');
+  // (5) DR-19 + Amendment 21 — composite_score, the four components, and the
+  // internal identities never appear as DATA KEYS in the served body.
+  for (const k of ['composite_score', 'components', 'c_rtp', 'c_ms', 'c_wa', 'c_ma', 'internal_game_id', 'internal_player_id', 'line_observed_at']) {
+    assert.ok(!html.includes(k), `forbidden data key "${k}" present in the served Board body`);
+  }
 });
 
 test('RSC / navigation flight response leaks no prohibited value (raw body)', async () => {

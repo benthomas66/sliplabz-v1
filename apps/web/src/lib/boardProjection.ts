@@ -47,7 +47,7 @@ export const BOARD_PROJECTION_FORBIDDEN_KEYS = [
   'composite_score', 'components', 'score', 'book_detail', 'offerings',
   'paid_book_offerings', 'profile_output', 'reasons', 'method_version',
   'l10_eligible_n', 'eligible_sportsbook_count', 'internal_game_id',
-  'evidence_profile_id', 'line_observed_at', 'bundle',
+  'internal_player_id', 'evidence_profile_id', 'line_observed_at', 'bundle',
   // never a rate/percentage form on any object
   'rate', 'over_rate', 'percentage',
 ] as const;

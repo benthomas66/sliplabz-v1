@@ -32,9 +32,19 @@ export function chooseBoardRepository(): BoardRepository {
   return new PostgresBoardRepository();
 }
 
+/** One Board row: the allowlisted projection PLUS a server-built research href.
+ *  The href carries the grain ids for the SHIPPED research route
+ *  (/research/[internal_game_id]/[internal_player_id]/[market_key]) — navigation
+ *  context, built server-side; the grain ids are NEVER projection data fields. */
+export interface BoardRow {
+  readonly projection: BoardProjection;
+  readonly research_href: string;
+}
+
 export interface BoardData {
   readonly method_version: string;
   readonly projections: ReadonlyArray<BoardProjection>;
+  readonly rows: ReadonlyArray<BoardRow>;
 }
 
 /**
@@ -81,7 +91,13 @@ export async function getBoardData(
   const ranked = [...served].sort((a, b) => dr20Compare(a.candidate, b.candidate));
 
   // Project AFTER sorting. The score — and line_observed_at — are gone from here on.
-  const projections = ranked.map((x) => constructBoardProjection(x.candidate, x.gate.display_age_seconds));
+  // The research href is built server-side from the candidate's grain ids (never
+  // placed on the projection); it carries navigation context for the shipped
+  // research route, distinct from the forbidden evidence-data fields.
+  const rows: ReadonlyArray<BoardRow> = ranked.map((x) => ({
+    projection: constructBoardProjection(x.candidate, x.gate.display_age_seconds),
+    research_href: `/research/${encodeURIComponent(x.candidate.internal_game_id)}/${encodeURIComponent(x.candidate.internal_player_id)}/${encodeURIComponent(x.candidate.market)}`,
+  }));
 
-  return { method_version: ACTIVE_BOARD_METHOD_VERSION, projections };
+  return { method_version: ACTIVE_BOARD_METHOD_VERSION, projections: rows.map((r) => r.projection), rows };
 }

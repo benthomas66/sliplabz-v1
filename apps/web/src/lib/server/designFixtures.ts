@@ -155,6 +155,7 @@ export function designFixtureCandidates(serve_now: string): RankedCandidate[] {
       l10_eligible_n: s.books >= 10 ? 10 : s.books,
       eligible_sportsbook_count: s.books,
       internal_game_id: `dddd0000-0000-0000-0000-${String(s.n).padStart(12, '0')}`,
+      internal_player_id: `pppp0000-0000-0000-0000-${String(s.n).padStart(12, '0')}`,
       method_version: 'evidence_method_v2',
       line_observed_at,
       player: s.player,
