@@ -53,6 +53,17 @@ export interface RankedCandidate {
   readonly bundle?: EvidenceInputBundleState | undefined;
   readonly consensus?: BoardConsensusContext | undefined;
 
+  // ---- R2-3 (GAP-22) SERVER-SIDE game context. ALREADY-KNOWN fields, passed
+  //      through for server-side display formatting (matchup + human tipoff).
+  //      The raw scheduled_start_utc + team identities stay server-side; only the
+  //      FORMATTED strings reach the projection. NEVER projection keys. ----
+  readonly game_context?: {
+    readonly player_team: string;
+    readonly opponent: string;
+    readonly is_home: boolean;
+    readonly scheduled_start_utc: string;
+  } | undefined;
+
   // ---- the method version this row belongs to (selection integrity) ----
   readonly method_version: MethodVersion;
 

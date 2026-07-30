@@ -107,3 +107,73 @@ export function fallbackAvatar(player: string): { initials: string; background: 
 export function windowCountsAria(w: WindowCell): string {
   return `${w.compact_counts} over ${w.sample.eligible_n} eligible`;
 }
+
+// ---------------------------------------------------------------------------
+// Consumer-facing labels — NEVER expose the internal market_key / enums.
+// ---------------------------------------------------------------------------
+export type MarketBucket = 'points' | 'rebounds' | 'assists' | 'threes' | 'other';
+
+export function marketLabel(market_key: string): string {
+  switch (market_key) {
+    case 'player_points': return 'Points';
+    case 'player_rebounds': return 'Rebounds';
+    case 'player_assists': return 'Assists';
+    case 'player_threes': return '3-Pointers';
+    default: return market_key.replace(/^player_/, '').replace(/\b\w/g, (c) => c.toUpperCase());
+  }
+}
+export function marketBucket(market_key: string): MarketBucket {
+  switch (market_key) {
+    case 'player_points': return 'points';
+    case 'player_rebounds': return 'rebounds';
+    case 'player_assists': return 'assists';
+    case 'player_threes': return 'threes';
+    default: return 'other';
+  }
+}
+
+export type DirectionBucket = 'over' | 'under' | 'neither';
+/** Direction bucket from the §D.2 compact label (never the internal direction enum). */
+export function directionBucket(classification_label: string): DirectionBucket {
+  return classification_label === 'Over-leaning' ? 'over'
+    : classification_label === 'Under-leaning' ? 'under' : 'neither';
+}
+
+/** ONE consolidated ordinary-metadata line (§ metadata consolidation), e.g.
+ *  "Fresh 31m · 6 books · Season 23 eligible". Exceptional conditions stay
+ *  separate. Never a raw ISO timestamp — only the freshness state + elapsed. */
+export function consolidatedMeta(
+  fresh: { label: string; elapsed: string } | null,
+  book_count: number | null,
+  season_eligible_n: number | null,
+): string {
+  const parts: string[] = [];
+  if (fresh !== null) parts.push(`${cap(fresh.label)} ${fresh.elapsed.replace(' ago', '')}`);
+  if (book_count !== null) parts.push(`${book_count} book${book_count === 1 ? '' : 's'}`);
+  if (season_eligible_n !== null) parts.push(`Season ${season_eligible_n} eligible`);
+  return parts.join(' · ');
+}
+function cap(s: string): string { return s.length === 0 ? s : s[0]!.toUpperCase() + s.slice(1); }
+
+// ---------------------------------------------------------------------------
+// R2-3 — matchup + human-formatted tipoff (GAP-22). DETERMINISTIC, SERVER-SIDE.
+// DISPLAY TIMEZONE RULE: all tipoffs render in US Eastern Time (America/New_York)
+// — one fixed rule, documented; no client-side timezone computation, no account
+// state. The raw ISO timestamp and any tz suffix are NEVER emitted.
+// ---------------------------------------------------------------------------
+export const BOARD_DISPLAY_TIMEZONE = 'America/New_York';
+
+/** `Chicago vs Phoenix` (home) or `Chicago @ Phoenix` (away), from the player's
+ *  perspective. Cities only — never internal ids or enums. */
+export function formatMatchup(playerTeam: string, opponent: string, is_home: boolean): string {
+  return `${playerTeam} ${is_home ? 'vs' : '@'} ${opponent}`;
+}
+
+/** `7:00 PM` in the fixed display timezone. No date, no timezone suffix, no ISO. */
+export function formatTipoff(scheduled_start_utc: string): string {
+  const d = new Date(scheduled_start_utc);
+  if (Number.isNaN(d.getTime())) return '';
+  return new Intl.DateTimeFormat('en-US', {
+    timeZone: BOARD_DISPLAY_TIMEZONE, hour: 'numeric', minute: '2-digit', hour12: true,
+  }).format(d);
+}

@@ -19,6 +19,7 @@
 
 import { renderCompactExplanation } from '../../../../src/explanation/index.js';
 import type { RankedCandidate } from './rankedCandidate.js';
+import { formatMatchup, formatTipoff } from './board/bandView.js';
 import type {
   PersistedWindowAggregate,
   PersistedSeriesPosition,
@@ -48,6 +49,7 @@ export const BOARD_PROJECTION_FORBIDDEN_KEYS = [
   'paid_book_offerings', 'profile_output', 'reasons', 'method_version',
   'l10_eligible_n', 'eligible_sportsbook_count', 'internal_game_id',
   'internal_player_id', 'evidence_profile_id', 'line_observed_at', 'bundle',
+  'scheduled_start_utc', 'game_context',
   // never a rate/percentage form on any object
   'rate', 'over_rate', 'percentage',
 ] as const;
@@ -176,15 +178,27 @@ export interface BoardProjectionBase {
   readonly band: BoardBand;
 }
 
+/** R2-3 (GAP-22) — ALREADY-KNOWN game context, formatted SERVER-SIDE for display.
+ *  DISPLAY-SAFE strings only: `matchup` (cities + vs/@) and a human tipoff time
+ *  (fixed display timezone). NEVER a raw ISO timestamp, tz suffix, or internal id. */
+export interface BoardGameContext {
+  readonly matchup: string;
+  readonly tipoff: string;
+}
+
 export interface BoardProjection extends BoardProjectionBase {
   /** §D.4 rule 6 binding quality-cap short tag — present ONLY when a cap fires. */
   readonly cap_tag?: string;
   /** §D.4 rule 7 provenance marker — present ONLY when includes_backfilled_historical
    *  is true. NOT hover-only: the surface renders it as persistent text. */
   readonly provenance_marker?: string;
+  /** R2-3 — matchup + human tipoff. Present ONLY when the game context is known;
+   *  absent (never fabricated) otherwise. */
+  readonly game?: BoardGameContext;
 }
 
-/** Which conditional fields a given candidate should carry. */
+/** Which conditional fields a given candidate should carry. `game` is validated
+ *  as an optional key WHEN PRESENT (data-driven, not applicability-gated). */
 export interface ProjectionApplicability {
   readonly cap: boolean;
   readonly provenance: boolean;
@@ -286,6 +300,14 @@ export function constructBoardProjection(
   const cap = compact.binding_cap !== null && compact.binding_cap.cap_summary_short !== '';
   const provenance = compact.provenance_marker !== null;
 
+  // R2-3: format the ALREADY-KNOWN game context server-side. No lookup, no
+  // recomputation, no schedule inference — only formatting of the passed-through
+  // fields. Absent when the grain has no game context (never fabricated).
+  const gc = candidate.game_context;
+  const game = gc !== undefined
+    ? { matchup: formatMatchup(gc.player_team, gc.opponent, gc.is_home), tipoff: formatTipoff(gc.scheduled_start_utc) }
+    : undefined;
+
   const projection: BoardProjection = {
     player: candidate.player,
     team: candidate.team,
@@ -297,6 +319,7 @@ export function constructBoardProjection(
     band: buildBand(candidate, displayAgeSeconds),
     ...(cap ? { cap_tag: compact.binding_cap!.cap_summary_short } : {}),
     ...(provenance ? { provenance_marker: compact.provenance_marker!.text } : {}),
+    ...(game !== undefined ? { game } : {}),
   };
 
   assertBoardProjectionKeySet(projection, { cap, provenance });
@@ -384,6 +407,9 @@ export function assertBoardProjectionKeySet(
   const expected = new Set<string>(BOARD_PROJECTION_BASE_KEYS);
   if (applies.cap) expected.add('cap_tag');
   if (applies.provenance) expected.add('provenance_marker');
+  // R2-3 `game` is an optional, data-driven key: allowed WHEN PRESENT and then
+  // validated to carry ONLY {matchup, tipoff} (below).
+  if (Object.prototype.hasOwnProperty.call(p, 'game')) expected.add('game');
 
   const actual = Object.keys(p);
   for (const k of actual) {
@@ -412,6 +438,9 @@ export function assertBoardProjectionKeySet(
   if (applies.provenance !== Object.prototype.hasOwnProperty.call(p, 'provenance_marker')) {
     throw new Error('V1-6a board projection provenance_marker presence disagrees with applicability.');
   }
+  // R2-3: the game context carries ONLY display-safe {matchup, tipoff} — a
+  // forbidden key (scheduled_start_utc, internal_game_id, …) smuggled in throws.
+  if (p.game !== undefined) assertExactKeys(p.game, ['matchup', 'tipoff'], 'game');
   // NESTED enforcement (Amendment 6): every band object at every level.
   assertBand(p.band);
 }

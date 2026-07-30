@@ -152,10 +152,18 @@ test('V1-8a2 board surface: all eight band fields present, §D.2 labels only, §
   assert.ok(!visibleText.includes('%'), 'percentage present in visible Board text');
   assert.ok(!/\d\s*\/\s*\d/.test(visibleText), 'slash ratio between digits present in visible Board text');
   assert.ok(!/\brate\b/i.test(visibleText), '"rate" present in visible Board text');
-  // (7) no hover-only — disclosure, freshness, provenance, sample rendered in body.
-  assert.ok(html.includes('data-testid="disclosure-g1"'), '§G.1 disclosure not in server body');
-  assert.ok(html.includes('data-testid="freshness-badge"'), 'freshness badge not in server body');
-  assert.ok(html.includes('data-testid="sample-badge"'), 'sample badge not in server body');
+  // R2-1/(16): ONE compact Board-level disclosure, NOT per row.
+  const boardDisc = (html.match(/data-testid="board-disclosure-g1"/g) ?? []).length;
+  assert.equal(boardDisc, 1, `board-level disclosure must appear exactly once (found ${boardDisc})`);
+  assert.ok(html.includes('not a predicted probability'), 'compact epistemic-boundary disclosure absent');
+  assert.ok(!html.includes('data-testid="disclosure-g1"'), 'per-row §G.1 disclosure must NOT be repeated in rows');
+  // R2-2: the legend lives inside a collapsible help control (server-rendered),
+  // not a permanently-expanded legend.
+  assert.ok(html.includes('data-testid="board-help"') && html.includes('How to read the Board'), 'collapsible help control absent');
+  assert.ok(/<details[^>]*data-testid="board-help"/.test(html), 'help control is not a server-rendered <details>');
+  // (7) no hover-only — consolidated metadata line + controls in the body.
+  assert.ok(html.includes('data-testid="row-meta"'), 'consolidated metadata line not in server body');
+  assert.ok(html.includes('data-testid="board-controls"'), 'filter controls not in server body');
   // (11) locked architecture present and inert; non-actionable CTA is disabled.
   assert.ok(html.includes('data-testid="locked-continuation"'), 'locked continuation absent');
   assert.ok(html.includes('data-testid="lock-panel"'), 'lock panel absent');
@@ -170,6 +178,77 @@ test('V1-8a2 board surface: all eight band fields present, §D.2 labels only, §
   // internal identities never appear as DATA KEYS in the served body.
   for (const k of ['composite_score', 'components', 'c_rtp', 'c_ms', 'c_wa', 'c_ma', 'internal_game_id', 'internal_player_id', 'line_observed_at']) {
     assert.ok(!html.includes(k), `forbidden data key "${k}" present in the served Board body`);
+  }
+});
+
+test('V1-8a3 selector: eight evidence cells render, L10 selected by default, all eight detail panels server-rendered, no raw series data', async () => {
+  const html = await (await fetch(`http://localhost:${FIXTURE_PORT}/board`)).text();
+  // (1) all eight evidence cells render (per row); (3) each panel is present.
+  for (const c of ['L5', 'L10', 'L20', 'H2H', 'STRK', 'AVG', 'DIFF', 'SZN']) {
+    assert.ok(html.includes(`data-testid="cell-${c}"`), `evidence cell ${c} absent`);
+    assert.ok(html.includes(`data-testid="panel-${c}"`), `detail panel ${c} absent (must be server-rendered for CSS selection)`);
+  }
+  // (2) L10 is selected by default — its radio carries the checked attribute.
+  assert.ok(/id="ev-0-L10"[^>]*\bchecked\b/.test(html) || /\bchecked\b[^>]*id="ev-0-L10"/.test(html), 'L10 is not checked by default on the first row');
+  // (4) L20 and SZN full Strips are present when selected (rendered server-side).
+  assert.ok((html.match(/data-testid="detail-strip"/g) ?? []).length >= 4, 'full Strips (L5/L10/L20/SZN detail) not all server-rendered');
+  // (6/7/8/9) no raw series object / internal identity / score crossed as data.
+  assert.ok(!html.includes('position_kind') && !html.includes('opponent_label') && !html.includes('eligibility_state'), 'raw series object keys crossed into the /board body');
+  assert.ok(!html.includes(DISTINCTIVE_INTERNAL_GAME_ID), 'series internal_game_id canary present');
+  // (10/11/12) filter controls present (market/direction/search).
+  for (const t of ['market-all', 'market-points', 'direction-over', 'player-search']) {
+    assert.ok(html.includes(`data-testid="${t}"`), `control ${t} absent`);
+  }
+  // (15) no probability/pick/EV/confidence framing anywhere in the AUTHORED
+  // visible text. The verbatim §G.1 authority disclosure is EXEMPT — it uses
+  // "predicted probabilities" in explicit NEGATION form (its whole job is to deny
+  // probability framing; src/explanation/disclosures.ts), so strip it first.
+  const vt = html
+    .replace(/<p[^>]*data-testid="board-disclosure-g1"[\s\S]*?<\/p>/g, ' ')
+    .replace(/<details[^>]*data-testid="board-help"[\s\S]*?<\/details>/g, ' ')
+    .replace(/<script[\s\S]*?<\/script>/g, ' ').replace(/<style[\s\S]*?<\/style>/g, ' ').replace(/<[^>]+>/g, ' ');
+  for (const bad of [/\bprobabilit/i, /\bconfidence\b/i, /\bexpected value\b/i, /\bEV\b/, /\bpick\b/i, /\bhit rate\b/i, /\block of the day\b/i]) {
+    assert.ok(!bad.test(vt), `forbidden framing matched ${bad} in visible Board text`);
+  }
+});
+
+test('V1-8a3 R2: matchup+tipoff, market-before-direction, labelled panels, Open full research, help states, no raw ISO/enum', async () => {
+  const html = await (await fetch(`http://localhost:${FIXTURE_PORT}/board`)).text();
+  const vt = html.replace(/<script[\s\S]*?<\/script>/g, ' ').replace(/<style[\s\S]*?<\/style>/g, ' ').replace(/<[^>]+>/g, ' ');
+  // R2-3 (4/5): matchup renders consumer-readable + human tipoff (ET). Alpha is
+  // Las Vegas @ Phoenix at 23:00Z → 7:00 PM ET.
+  assert.ok(html.includes('data-testid="row-matchup"'), 'matchup row absent');
+  assert.ok(html.includes('Las Vegas @ Phoenix'), 'matchup not consumer-readable');
+  assert.ok(html.includes('7:00 PM') || html.includes('7:00 PM'), 'human tipoff (7:00 PM ET) absent');
+  // (6) no raw ISO timestamp in the visible text; (7) no raw market enum in visible text.
+  assert.ok(!/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(vt), 'raw ISO timestamp appears in visible Board text');
+  for (const enumStr of ['player_points', 'player_threes', 'player_rebounds', 'player_assists', 'sportsbook_consensus']) {
+    assert.ok(!vt.includes(enumStr), `raw enum "${enumStr}" appears in visible Board text`);
+  }
+  // consumer market labels ARE present.
+  assert.ok(html.includes('Points') && html.includes('3-Pointers'), 'consumer market labels absent');
+  // (8) market+line precede direction in the row's source order.
+  const mi = html.indexOf('data-testid="row-market"');
+  const di = html.indexOf('data-testid="row-direction"');
+  assert.ok(mi !== -1 && di !== -1 && mi < di, 'market/line must precede direction in the row');
+  // (12) explicit panel headings; (13) explicit Open full research action.
+  assert.ok(html.includes('Last 10 eligible games') && html.includes('Season evidence'), 'explicit panel headings absent');
+  assert.ok(html.includes('data-testid="open-research"') && html.includes('Open full research'), 'explicit Research action absent');
+  const openHref = /data-testid="open-research"[^>]*href="([^"]+)"|href="([^"]+)"[^>]*data-testid="open-research"/.exec(html);
+  assert.ok(openHref !== null && /\/research\//.test(openHref[0]), 'Open full research does not navigate to a research grain URL');
+  // (3) the help control exposes all four Strip states + the epistemic boundary.
+  for (const s of ['above the evaluated line', 'below the evaluated line', 'on the line', 'did not play']) {
+    assert.ok(html.includes(s), `help control missing strip state "${s}"`);
+  }
+  assert.ok(html.includes('historical evidence, not a predicted probability'), 'help control missing epistemic boundary');
+});
+
+test('V1-8a3 (18): every bottom-navigation destination resolves (Board · Players · Methodology)', async () => {
+  for (const [path, marker] of [['/board', 'WNBA player props'], ['/players', 'players-pending'], ['/methodology', 'How to read the Board']] as const) {
+    const r = await fetch(`http://localhost:${FIXTURE_PORT}${path}`);
+    assert.equal(r.status, 200, `${path} did not return 200`);
+    const body = await r.text();
+    assert.ok(body.includes(marker), `${path} did not render its expected content`);
   }
 });
 

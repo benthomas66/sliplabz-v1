@@ -60,6 +60,11 @@ export function buildBoardQuery(method: MethodVersion): { text: string; values: 
            ep.c_ma::float8                  AS c_ma,
            p.display_name                   AS player,
            COALESCE(t.display_name, '')     AS team,
+           -- R2-3 (GAP-22): ALREADY-KNOWN game context (no lookup/inference).
+           g.scheduled_start_utc            AS scheduled_start_utc,
+           (g.home_team_id = p.current_team_id) AS is_home,
+           COALESCE(t.city, t.display_name) AS player_team_city,
+           COALESCE(opp.city, opp.display_name) AS opponent_city,
            COALESCE(cmr.eligible_sportsbook_count, 0)::int AS eligible_sportsbook_count,
            cmr.line_consensus_point::float8 AS consensus_point,
            cmr.line_min_point::float8       AS min_point,
@@ -70,6 +75,9 @@ export function buildBoardQuery(method: MethodVersion): { text: string; values: 
       FROM evidence_profiles ep
       JOIN players p            ON p.internal_player_id = ep.internal_player_id
       LEFT JOIN teams t         ON t.internal_team_id = p.current_team_id
+      LEFT JOIN games g         ON g.internal_game_id = ep.internal_game_id
+      LEFT JOIN teams opp       ON opp.internal_team_id =
+        CASE WHEN g.home_team_id = p.current_team_id THEN g.away_team_id ELSE g.home_team_id END
       LEFT JOIN LATERAL (
         SELECT c.eligible_sportsbook_count, c.line_consensus_point, c.line_min_point,
                c.line_max_point, c.point_distribution, c.freshness_state
@@ -127,6 +135,10 @@ interface BoardQueryRow {
   c_ma: number | null;
   player: string;
   team: string;
+  scheduled_start_utc: string | Date | null;
+  is_home: boolean | null;
+  player_team_city: string | null;
+  opponent_city: string | null;
   eligible_sportsbook_count: number;
   consensus_point: number | null;
   min_point: number | null;
@@ -183,6 +195,16 @@ function rowToCandidate(row: BoardQueryRow, method: MethodVersion): RankedCandid
     internal_game_id: row.internal_game_id,
     internal_player_id: row.internal_player_id,
     evidence_profile_id: row.evidence_profile_id,
+    // R2-3: build game context ONLY when all already-known fields are present;
+    // never fabricate a matchup/tipoff.
+    game_context: (row.scheduled_start_utc !== null && row.is_home !== null && row.opponent_city !== null && row.player_team_city !== null)
+      ? {
+          player_team: row.player_team_city,
+          opponent: row.opponent_city,
+          is_home: row.is_home,
+          scheduled_start_utc: row.scheduled_start_utc instanceof Date ? row.scheduled_start_utc.toISOString() : row.scheduled_start_utc,
+        }
+      : undefined,
     // V1-8a1 SERVER-SIDE band context (consensus distribution/range/count +
     // freshness state) from the persisted current_market_row. Distribution is
     // point→count (non-economic); no paid per-book handle.

@@ -1,16 +1,21 @@
-// V1-6a / V1-8a2 — the Board route (SERVER component; no client JS in the tree).
+// V1-6a / V1-8a2 / V1-8a3 — the Board route (server component; the ONLY client
+// component is the filter controller `BoardControls`).
 //
 // Node runtime (pg cannot run on edge). Rendered dynamically so it reflects the
 // authoritative hosted state per request. The server ranks + projects + renders
-// the whole information band to HTML; the series payload NEVER crosses to a
-// client component (GAP-21). Every available row renders (Founder ruling 2); the
-// locked continuation architecture sits BELOW them and gates nothing.
+// each row (including all eight evidence panels) to HTML; the series payload
+// NEVER crosses to a client component (GAP-21). `BoardControls` receives the
+// pre-rendered row nodes + allowlisted display meta only. §G.1 is rendered ONCE
+// at board level (Founder Ruling 1). Every available row renders; the locked
+// continuation architecture sits BELOW them and gates nothing.
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 import { getBoardData } from '../../src/lib/server/boardService';
-import { BoardChrome, BoardRow, LockedContinuation } from '../../components/board/BoardSurface';
+import { BoardChrome, BoardRow, BoardDisclosure, LockedContinuation } from '../../components/board/BoardSurface';
+import { BoardControls, type BoardControlItem } from '../../components/board/BoardControls';
+import { marketBucket, directionBucket } from '../../src/lib/board/bandView';
 import { EMPTY_STATE_HEADING, EMPTY_STATE_MESSAGE } from '../../src/lib/boardCopy';
 
 export default async function BoardPage() {
@@ -27,13 +32,26 @@ export default async function BoardPage() {
     );
   }
 
+  // R2-1/R2-2: ONE compact board-level disclosure sentence + a collapsible
+  // "How to read the Board" help (server-rendered). The fuller explanation lives
+  // in Methodology. §G.1 is NOT repeated per row (Founder Ruling 1).
+
+  // Each item carries the pre-rendered server node + ALLOWLISTED display meta
+  // only (player name, market bucket, direction bucket). No series/score/id.
+  const items: ReadonlyArray<BoardControlItem> = rows.map((row, i) => ({
+    key: `${row.projection.player}-${row.projection.market}-${i}`,
+    meta: {
+      player: row.projection.player,
+      marketBucket: marketBucket(row.projection.market),
+      direction: directionBucket(row.projection.classification_label),
+    },
+    node: <BoardRow row={row} rowId={String(i)} />,
+  }));
+
   return (
     <BoardChrome>
-      <div data-testid="board-rows" data-row-count={rows.length}>
-        {rows.map((row, i) => (
-          <BoardRow key={`${row.projection.player}-${row.projection.market}-${i}`} row={row} />
-        ))}
-      </div>
+      <BoardDisclosure />
+      <BoardControls items={items} />
       <LockedContinuation />
     </BoardChrome>
   );
