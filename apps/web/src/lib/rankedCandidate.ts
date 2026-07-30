@@ -11,7 +11,21 @@
 // projection constructor reads an allowlist off it and returns a NEW object.
 
 import type { EvidenceProfileOutput } from '../../../../src/evidence/types.js';
+import type { EvidenceInputBundleState } from '../../../../src/evidence/v2/readEvidenceInputs.js';
 import type { MethodVersion } from './method.js';
+
+/** V1-8a1 — persisted current-market context for the information band's
+ *  consensus + freshness cells (from `current_market_rows`). SERVER-SIDE band
+ *  input; the projection copies specific fields, never spreads this object.
+ *  No paid per-book handle. */
+export interface BoardConsensusContext {
+  readonly consensus_point: number | null;
+  readonly min_point: number | null;
+  readonly max_point: number | null;
+  readonly book_count: number;
+  readonly distribution: ReadonlyArray<{ readonly point: number; readonly count: number }>;
+  readonly freshness_state: string | null;
+}
 
 export interface RankedCandidate {
   // ---- RESTRICTED (DR-19): the composite score exists ONLY at this stage ----
@@ -21,6 +35,19 @@ export interface RankedCandidate {
   readonly l10_eligible_n: number;
   readonly eligible_sportsbook_count: number;
   readonly internal_game_id: string;
+
+  // ---- V1-8a1 SERVER-SIDE band inputs. NEVER projection keys. ----
+  //   `evidence_profile_id` is the batched-bundle join key (Amendment 21 sibling
+  //   of internal_game_id — a stable internal identity, FORBIDDEN on the browser
+  //   projection). `bundle` is the V1-8a0/V1-8a0a persisted window aggregates +
+  //   series + source identities (carrying internal_game_id server-side).
+  //   `consensus` is the persisted current-market context. All optional: a legacy
+  //   profile with no persisted bundle omits `bundle` and projects a typed
+  //   `unavailable_not_persisted` band (Scope D). The projection reads these
+  //   FIELD-BY-FIELD and never carries them.
+  readonly evidence_profile_id?: string | undefined;
+  readonly bundle?: EvidenceInputBundleState | undefined;
+  readonly consensus?: BoardConsensusContext | undefined;
 
   // ---- the method version this row belongs to (selection integrity) ----
   readonly method_version: MethodVersion;

@@ -19,6 +19,7 @@ import {
   DISTINCTIVE_COMPOSITE_SCORE,
   DISTINCTIVE_PAID_BOOK,
   DISTINCTIVE_PAID_PRICE,
+  DISTINCTIVE_INTERNAL_GAME_ID,
 } from '../src/lib/server/fixtureRepository.js';
 
 const APP_DIR = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -31,7 +32,11 @@ const EMPTY_PORT = 39392;
 // Distinctive values as they could appear in any serialization.
 const SCORE_DIGITS = String(DISTINCTIVE_COMPOSITE_SCORE).replace(/[^0-9]/g, '').replace(/^0+/, ''); // "9182736455"
 const PAID_PRICE_DIGITS = String(DISTINCTIVE_PAID_PRICE).replace(/[^0-9]/g, ''); // "424242"
-const PROHIBITED = [SCORE_DIGITS, DISTINCTIVE_PAID_BOOK, PAID_PRICE_DIGITS];
+// V1-8a1 Amendment 21: the SERVER-SIDE-ONLY internal_game_id canary. It is
+// carried on every fixture series position (server side) and MUST be dropped by
+// the projection before the band crosses to the 'use client' BoardTable — so it
+// can never appear in the RSC flight, HTML, client bundles, or the server log.
+const PROHIBITED = [SCORE_DIGITS, DISTINCTIVE_PAID_BOOK, PAID_PRICE_DIGITS, DISTINCTIVE_INTERNAL_GAME_ID];
 const SECRETS = ['postgres://', 'postgresql://', 'SLIPLABZ_BOARD_DATABASE_URL'];
 
 // Known-ALLOWED, deterministic authority strings that MUST appear (positive control).
@@ -103,6 +108,20 @@ test('initial HTML document (incl. <script>) leaks no prohibited value; flight +
   for (const bad of PROHIBITED) {
     assert.ok(!html.includes(bad), `prohibited value "${bad}" leaked into the initial HTML/RSC body`);
   }
+});
+
+test('V1-8a1: the information BAND reaches the flight (positive control) but the internal_game_id canary does NOT', async () => {
+  const html = await (await fetch(`http://localhost:${FIXTURE_PORT}/board`)).text();
+  // POSITIVE CONTROL: the band IS serialized into the flight (BoardTable is a
+  // 'use client' component receiving the full projection), so the audit is not
+  // vacuous — the H2H typed-unavailable marker is a band-only string.
+  assert.ok(html.includes('requires_h2h_window_g2'), 'band H2H marker absent — the band did not reach the flight');
+  // NEGATIVE: the server-side-only identity canary is dropped by the projection.
+  assert.ok(!html.includes(DISTINCTIVE_INTERNAL_GAME_ID), 'internal_game_id canary leaked into the /board body');
+  assert.ok(!html.includes('internal_game_id'), 'internal_game_id key leaked into the /board body');
+  // REVISE (§2.6): the freshness badge carries display_age (a duration) but NEVER
+  // the raw line_observed_at timestamp — the key must not appear in the body.
+  assert.ok(!html.includes('line_observed_at'), 'line_observed_at key leaked into the /board body');
 });
 
 test('RSC / navigation flight response leaks no prohibited value (raw body)', async () => {

@@ -12,6 +12,8 @@ import 'server-only';
 import { getBoardPool } from './db.js';
 import { assertKnownMethodVersion, type MethodVersion } from '../method.js';
 import type { RankedCandidate } from '../rankedCandidate.js';
+import { readEvidenceInputBundlesBatched } from '../../../../../src/evidence/v2/readEvidenceInputs.js';
+import type { Tx } from '../../../../../src/db/transaction.js';
 import type {
   EvidenceProfileOutput,
   ComponentValues,
@@ -39,7 +41,8 @@ export interface BoardRepository {
 export function buildBoardQuery(method: MethodVersion): { text: string; values: readonly string[] } {
   assertKnownMethodVersion(method); // fail-loud before any query is built
   const text = `
-    SELECT ep.internal_game_id::text        AS internal_game_id,
+    SELECT ep.evidence_profile_id::text     AS evidence_profile_id,
+           ep.internal_game_id::text        AS internal_game_id,
            ep.internal_player_id::text      AS internal_player_id,
            ep.market_key                    AS market_key,
            ep.classification::text          AS classification,
@@ -58,12 +61,18 @@ export function buildBoardQuery(method: MethodVersion): { text: string; values: 
            p.display_name                   AS player,
            COALESCE(t.display_name, '')     AS team,
            COALESCE(cmr.eligible_sportsbook_count, 0)::int AS eligible_sportsbook_count,
+           cmr.line_consensus_point::float8 AS consensus_point,
+           cmr.line_min_point::float8       AS min_point,
+           cmr.line_max_point::float8       AS max_point,
+           cmr.point_distribution           AS point_distribution,
+           cmr.freshness_state::text        AS freshness_state,
            lo.line_observed_at              AS line_observed_at
       FROM evidence_profiles ep
       JOIN players p            ON p.internal_player_id = ep.internal_player_id
       LEFT JOIN teams t         ON t.internal_team_id = p.current_team_id
       LEFT JOIN LATERAL (
-        SELECT c.eligible_sportsbook_count
+        SELECT c.eligible_sportsbook_count, c.line_consensus_point, c.line_min_point,
+               c.line_max_point, c.point_distribution, c.freshness_state
           FROM current_market_rows c
          WHERE c.internal_game_id = ep.internal_game_id
            AND c.internal_player_id = ep.internal_player_id
@@ -97,7 +106,9 @@ export function buildBoardQuery(method: MethodVersion): { text: string; values: 
   return { text, values: [method] };
 }
 
+interface PointDistEntry { point: number; book_count?: number; count?: number }
 interface BoardQueryRow {
+  evidence_profile_id: string;
   internal_game_id: string;
   internal_player_id: string;
   market_key: string;
@@ -117,6 +128,11 @@ interface BoardQueryRow {
   player: string;
   team: string;
   eligible_sportsbook_count: number;
+  consensus_point: number | null;
+  min_point: number | null;
+  max_point: number | null;
+  point_distribution: ReadonlyArray<PointDistEntry> | null;
+  freshness_state: string | null;
   line_observed_at: string | Date | null;
 }
 
@@ -165,6 +181,20 @@ function rowToCandidate(row: BoardQueryRow, method: MethodVersion): RankedCandid
     l10_eligible_n: 0,
     eligible_sportsbook_count: row.eligible_sportsbook_count,
     internal_game_id: row.internal_game_id,
+    evidence_profile_id: row.evidence_profile_id,
+    // V1-8a1 SERVER-SIDE band context (consensus distribution/range/count +
+    // freshness state) from the persisted current_market_row. Distribution is
+    // point→count (non-economic); no paid per-book handle.
+    consensus: {
+      consensus_point: row.consensus_point,
+      min_point: row.min_point,
+      max_point: row.max_point,
+      book_count: row.eligible_sportsbook_count,
+      distribution: (row.point_distribution ?? []).map((d) => ({
+        point: d.point, count: d.count ?? d.book_count ?? 0,
+      })),
+      freshness_state: row.freshness_state,
+    },
     method_version: method,
     // Normalise the audit-chain observation time to ISO; null stays null
     // (grain with no self_observed current_poll offering → gate suppresses).
@@ -186,7 +216,14 @@ export class PostgresBoardRepository implements BoardRepository {
     assertKnownMethodVersion(method);
     const { text, values } = buildBoardQuery(method);
     const pool = getBoardPool();
+    // QUERY SHAPE (V1-8a1, no N+1): 1 base query + 3 bounded bundle queries
+    // (window aggregates + source identities + series, each ANY($ids)) via the
+    // committed V1-8a0 batched reader — 4 total for ANY row count. Join key is
+    // evidence_profile_id (server-side). The pool satisfies the `Tx` interface.
     const res = await pool.query(text, values as unknown[]);
-    return (res.rows as BoardQueryRow[]).map((r) => rowToCandidate(r, method));
+    const base = (res.rows as BoardQueryRow[]).map((r) => rowToCandidate(r, method));
+    const ids = base.map((c) => c.evidence_profile_id!).filter((id): id is string => typeof id === 'string');
+    const bundles = await readEvidenceInputBundlesBatched(pool as unknown as Tx, ids);
+    return base.map((c) => ({ ...c, bundle: bundles.get(c.evidence_profile_id!) }));
   }
 }

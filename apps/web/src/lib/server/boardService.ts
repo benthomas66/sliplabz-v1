@@ -68,17 +68,20 @@ export async function getBoardData(
   const candidates = await repo.queryRankedCandidates(ACTIVE_BOARD_METHOD_VERSION);
 
   // SERVE GATE: one serve_now, applied to every candidate via the committed
-  // gate. Suppressed rows are dropped before ranking/projection.
-  const served: ReadonlyArray<RankedCandidate> = candidates.filter(
-    (c) => evaluateV2ServingGate({ line_observed_at: c.line_observed_at, serve_now }).decision === 'serve',
-  );
+  // gate. Suppressed rows are dropped before ranking/projection. The gate's
+  // BOUNDED display_age (≤ the serve horizon for a served row) is captured and
+  // carried to the freshness cell (Grammar §2.6) — the DURATION only; the raw
+  // line_observed_at stays server-side and is never projected.
+  const served = candidates
+    .map((c) => ({ candidate: c, gate: evaluateV2ServingGate({ line_observed_at: c.line_observed_at, serve_now }) }))
+    .filter((x) => x.gate.decision === 'serve');
 
   // Rank on full-precision stored score BEFORE projection. Copy before sort
   // (do not mutate the repository's array).
-  const ranked: RankedCandidate[] = [...served].sort(dr20Compare);
+  const ranked = [...served].sort((a, b) => dr20Compare(a.candidate, b.candidate));
 
   // Project AFTER sorting. The score — and line_observed_at — are gone from here on.
-  const projections = ranked.map(constructBoardProjection);
+  const projections = ranked.map((x) => constructBoardProjection(x.candidate, x.gate.display_age_seconds));
 
   return { method_version: ACTIVE_BOARD_METHOD_VERSION, projections };
 }
