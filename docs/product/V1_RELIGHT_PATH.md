@@ -90,29 +90,90 @@ Odds API spend**, depending on one authority question:
   (~4 credits/game/slate). **If so, that is a real methodology constraint to be
   quoted, not a cost preference.**
 
-This is the load-bearing STEP 0 of the V1-OP-6 ticket. If promotion is permitted,
-forward coverage is free and V1-OP-3's cadence floor becomes the enabling
-dependency (ensuring a poll lands inside the 10-min pre-close window).
+### 4.1 RESOLVED — FREE (V1-OP-6 STEP 0.A verdict, governor-verified 2026-07-31)
 
-## 5. Where V1-OP-3 fits
+Forward coverage is **FREE** — legs 2+3 promote the last pre-tip `current_poll`
+(`self_observed`) snapshot into a closing quote; **no Odds API historical endpoint
+is required**. The apparent isolation/precedent tension is not a real conflict.
+Verified against the authority (each quote read directly):
 
-V1-OP-3 widens the current-market poll window (3h→8h) with a cadence floor. It
-produces **no hlr** and is **not** the relight trigger. It becomes relevant only
-under the free-promotion branch (§4): a wider window + cadence floor makes a
-near-tip snapshot (inside the 10-min close-capture window) reliably available for
-promotion. Supporting dependency, not the fix.
+- **§7.10.1 (Complete Spec) is provider-agnostic.** "A source closing quote is the
+  eligible conventional-sportsbook offering present in **the last successful
+  provider snapshot at or before the close boundary**." Its rules are pure
+  timing/eligibility. The following sentence — "**For historical API data**, the
+  provider returns the closest snapshot…" — is a *clarification of that one case*,
+  not an exclusivity rule. A `current_poll` snapshot **is** a provider snapshot,
+  so it satisfies the definition unchanged.
+- **The isolation invariant is CURRENT-DIRECTIONAL, not a lineage-purity rule.**
+  `currentHistoricalIsolation.ts` (authority §11.4, Odds §16.1): "every
+  current-selection, first-observed, and movement computation reads ONLY rows with
+  `request_kind=current_poll AND provenance=self_observed`; historical rows are
+  structurally excluded." It protects *current* computations FROM historical
+  contamination; it says nothing barring a self_observed snapshot from BEING a
+  closing quote.
+- **The closing-quote tables carry NO provenance CHECK.** `source_closing_quotes`
+  (migration `20260711140005`) constrains only the `close_capture_state` pairing;
+  `canonical_closing_points` (`20260711140006`) only `selection_method`. No schema
+  barrier to a self_observed `source_snapshot_id`. §7.10.2 selection is
+  provenance-agnostic (provenance is stored, not gated).
+- **Not a method change (DR-24 not implicated).** Promotion changes the
+  *population source* of an input observation, not the closing-quote definition
+  (§7.10.1), the canonical selection (§7.10.2), or any `evidence_method_v1`
+  formula/threshold/vocabulary. Ops-wiring, not a `method_version` event.
 
-## 6. Consequence for the plan
+**Caveat (implementation risk, not a verdict change):** this is authority-permitted
+but genuinely **NEW lineage** — no `self_observed` market snapshot has ever flowed
+into a `canonical_closing_point` (the `recomputationWriter` "precedent" is
+decorative: it hardcodes `self_observed` on hlr while reading historically-sourced
+canonical points). Therefore V1-OP-6 must **prove** the promoted path, not assume
+it (see the ticket's hard STEP 0.B gate: byte-identical canonical + hlr shapes vs
+the seed path, and one real-slate end-to-end verification).
+
+**Consequence:** V1-OP-3's cadence floor is now the **REQUIRED enabling
+dependency** (a poll must land inside the 10-min pre-close window for a game to
+have anything eligible to promote), not a supporting nicety.
+
+## 5. V1-OP-3 — REFRAMED as a correctness enabler (under the FREE verdict)
+
+V1-OP-3 was drafted as "widen the poll window 3h→8h for coverage," with the
+cadence floor as a **cost** control. Under §4.1 (FREE), the cadence floor's real
+job changes: it must **guarantee a `current_poll` snapshot lands inside the 10-min
+pre-close window** for every game — otherwise that game has nothing eligible to
+promote and never gets forward hlr. That is a **correctness requirement, not a
+budget one.**
+
+Re-scope (binding constraint for the V1-OP-3 ticket):
+- The **near-tip cadence tier must be derived from the close-capture window
+  (§7.10.1, 600s), not from cost.** A floor that permits any gap longer than 10
+  minutes near tipoff leaves some games with no eligible pre-close snapshot.
+- The ticket must state **explicitly what near-tip cadence guarantees an eligible
+  snapshot for every game** (account for poll duration/jitter and the "stop
+  polling at scheduled tip" rule, Odds §19.1), and re-derive BOTH tiers with that
+  as the binding constraint (cost becomes the secondary ceiling, not the driver).
+- Sequenced AFTER V1-OP-6 (see §6): V1-OP-6 proves the mechanism and tells us the
+  exact cadence requirement to tune to.
+
+## 6. Consequence for the plan — corrected order
 
 The "4c → 5a → look" sequence does **not** produce a working Board. Corrected:
 
-1. V1-OP-4c — coherence gate (DONE, `df58f05`).
-2. **V1-OP-6** — forward closing-line → hlr pipeline (legs 2+3). *The critical
-   path to a serving Board.* STEP 0 resolves §4.
-3. V1-OP-5a — BDL box scores + finalization (leg 1), reframed as backlog restore
-   **and** sustained forward, not "the relight."
-4. Sustain forward coverage ~2–4 weeks until the unmapped tail rolls off (§Phase 2).
+1. **V1-OP-4c** — coherence gate. DONE (`df58f05`).
+2. **V1-OP-6** — forward closing-line → hlr pipeline (legs 2+3), FREE per §4.1.
+   *The critical path.* Prove the mechanism FIRST (hard STEP 0.B gate:
+   byte-identical canonical/hlr shapes vs the seed path + one real-slate
+   end-to-end). It runs against EXISTING snapshots — under the current 3h window
+   some games may already have eligible pre-close observations, enough to prove
+   promotion out.
+3. **V1-OP-3** — cadence floor derived from the close-capture window (§5), to
+   guarantee eligibility for *every* game. AFTER V1-OP-6, because proving the
+   mechanism first tells us the exact cadence to tune to; tuning cadence before
+   the mechanism is proven risks wasted work if promotion fails on shape parity or
+   an unexercised-path defect. **Prove the mechanism, then tune the cadence that
+   feeds it.**
+4. **V1-OP-5a** — BDL box scores + finalization (leg 1). Runs **in PARALLEL** —
+   independent, zero credits, and box scores are a hard prerequisite for hlr
+   regardless of how closing lines arrive.
+5. Sustain forward coverage ~2–4 weeks until the unmapped tail rolls off (Phase 2).
 
 V1-OP-5b (historical Odds API backfill of the 19 mapped in-window games) is
-optional acceleration — it fills 19 of the 23 tail games so they need not wait to
-roll off — and stays behind the ~4-credit probe. It is NOT on the critical path.
+optional acceleration behind the ~4-credit probe; NOT on the critical path.
