@@ -17,6 +17,8 @@ import type { IngestionLagMetric } from '../../../../../src/ops/ingestionGate.js
 import {
   INGESTION_LAG_GRACE_SECONDS,
   INGESTION_LAG_SUPPRESS_SECONDS,
+  USABLE_HLR_COVERAGE_STATES,
+  INGESTION_COVERAGE_RECENT_GAMES_N,
 } from '../../../../../src/ops/constants.js';
 import type { Tx } from '../../../../../src/db/transaction.js';
 import type {
@@ -39,12 +41,13 @@ export interface BoardRepository {
   queryRankedCandidates(method: MethodVersion): Promise<ReadonlyArray<RankedCandidate>>;
 
   /**
-   * V1-OP-4 — read-only ingestion-lag probe. Reports how far historical stat
-   * ingestion has fallen behind (past-tip games with NO `player_game_stats`
-   * row), measured against the request's single `serve_now`. The FIXTURE
-   * source is EXEMPT (no live ingestion → reports "current"). Read-only; it
-   * NEVER references game status or the newest-final game, and it writes
-   * nothing.
+   * V1-OP-4 / V1-OP-4c — read-only ingestion-lag probe. Reports TWO metrics
+   * against the request's single `serve_now`: Metric A (past-tip games with NO
+   * usable `historical_line_results` coverage — the engine's table, DRIVES
+   * suppression) and Metric B (past-tip games with NO `player_game_stats` row —
+   * REPORTED only). The FIXTURE source is EXEMPT (no live ingestion → reports
+   * "current"). Read-only; it NEVER references game status or the newest-final
+   * game, and it writes nothing.
    */
   probeIngestionLag(serve_now: string): Promise<IngestionLagMetric>;
 }
@@ -250,53 +253,105 @@ function rowToCandidate(row: BoardQueryRow, method: MethodVersion): RankedCandid
 }
 
 /**
- * V1-OP-4 — PURE, testable construction of the read-only ingestion-lag probe
- * query. `unresolved(g)` = `games.scheduled_start_utc < serve_now` (future
- * games excluded) AND NOT EXISTS a `player_game_stats` row for that
- * `internal_game_id`. It NEVER references game `status` or a newest-final
- * game — pgs-absence only (finalization is itself broken, so a status gate
- * would never fire). Grace (48h) and suppress (96h) seconds are BOUND
- * parameters from the ops constants, so the SQL counts and the pure decision
- * share one source of truth. Read-only.
+ * The `coverage_state IN (...)` SQL fragment, rendered from the ops constant
+ * `USABLE_HLR_COVERAGE_STATES` so the gate has ONE source of truth for the
+ * engine's usable-coverage set. These values are compile-time constants (never
+ * user input), so string-building the IN list carries no injection risk. The
+ * drift-tripwire test binds this set to the engine readers' inline predicate.
+ */
+const USABLE_HLR_COVERAGE_IN_LIST = USABLE_HLR_COVERAGE_STATES.map((s) => `'${s}'`).join(', ');
+
+/**
+ * V1-OP-4 / V1-OP-4c — PURE, testable construction of the read-only
+ * ingestion-lag probe query. Computes TWO metrics against one `serve_now`
+ * (future games excluded from both; NEVER references game `status` or a
+ * newest-final game — finalization is itself broken, so a status gate would
+ * never fire). Grace (48h) and suppress (96h) seconds are BOUND parameters from
+ * the ops constants, so the SQL counts and the pure decision share one source
+ * of truth. Read-only.
+ *
+ *   METRIC A — engine coverage (DRIVES suppression). `coverage_unresolved(g)` =
+ *   `games.scheduled_start_utc < serve_now` AND NOT EXISTS a
+ *   `historical_line_results` row for that `internal_game_id` with a
+ *   `coverage_state` in `USABLE_HLR_COVERAGE_STATES` — the exact table+predicate
+ *   the engine's threshold windows read (GAP-26 re-anchor). A restored box score
+ *   with no usable closing line therefore CANNOT lift suppression.
+ *
+ *   METRIC B — box-score absence (REPORTED only). `pgs_absent(g)` =
+ *   `games.scheduled_start_utc < serve_now` AND NOT EXISTS a `player_game_stats`
+ *   row (the original V1-OP-4 metric, retained verbatim as a distinct
+ *   diagnostic). It does NOT drive the decision.
  */
 export function buildIngestionLagQuery(serve_now: string): {
   text: string;
   values: readonly (string | number)[];
 } {
   const text = `
-    WITH unresolved AS (
-      SELECT g.scheduled_start_utc
+    WITH recent_games AS (
+      -- V1-OP-4c LOWER BOUND: both metrics are measured over only the N most
+      -- recent past-tip games league-wide (game-count, never calendar — a
+      -- calendar window would scroll a live stall out of view). This excludes
+      -- ancient permanent holes so the gate can LIFT once recent ingestion is
+      -- healthy, while a live stall stays inside the window by construction.
+      SELECT g.internal_game_id, g.scheduled_start_utc
         FROM games g
        WHERE g.scheduled_start_utc < $1::timestamptz
-         AND NOT EXISTS (
+       ORDER BY g.scheduled_start_utc DESC, g.internal_game_id DESC
+       LIMIT $4
+    ),
+    coverage_unresolved AS (
+      SELECT rg.scheduled_start_utc AS tip
+        FROM recent_games rg
+       WHERE NOT EXISTS (
+           SELECT 1 FROM historical_line_results hlr
+            WHERE hlr.internal_game_id = rg.internal_game_id
+              AND hlr.coverage_state IN (${USABLE_HLR_COVERAGE_IN_LIST})
+         )
+    ),
+    pgs_absent AS (
+      SELECT rg.scheduled_start_utc AS tip
+        FROM recent_games rg
+       WHERE NOT EXISTS (
            SELECT 1 FROM player_game_stats pgs
-            WHERE pgs.internal_game_id = g.internal_game_id
+            WHERE pgs.internal_game_id = rg.internal_game_id
          )
     )
     SELECT
-      count(*) FILTER (
-        WHERE scheduled_start_utc < ($1::timestamptz - make_interval(secs => $2))
-      )::int AS unresolved_past_grace_48h,
-      count(*) FILTER (
-        WHERE scheduled_start_utc < ($1::timestamptz - make_interval(secs => $3))
-      )::int AS unresolved_past_fire_96h,
-      min(scheduled_start_utc) AS oldest_unresolved_tip,
+      -- Metric A — engine coverage (DRIVES suppression)
+      (SELECT count(*) FILTER (
+         WHERE tip < ($1::timestamptz - make_interval(secs => $2))
+       )::int FROM coverage_unresolved) AS coverage_unresolved_past_grace_48h,
+      (SELECT count(*) FILTER (
+         WHERE tip < ($1::timestamptz - make_interval(secs => $3))
+       )::int FROM coverage_unresolved) AS coverage_unresolved_past_fire_96h,
+      (SELECT min(tip) FROM coverage_unresolved) AS oldest_coverage_unresolved_tip,
       (
         SELECT max(g2.scheduled_start_utc) FROM games g2
          WHERE EXISTS (
-           SELECT 1 FROM player_game_stats p2
-            WHERE p2.internal_game_id = g2.internal_game_id
+           SELECT 1 FROM historical_line_results h2
+            WHERE h2.internal_game_id = g2.internal_game_id
+              AND h2.coverage_state IN (${USABLE_HLR_COVERAGE_IN_LIST})
          )
-      ) AS newest_ingested_game
-    FROM unresolved`;
-  return { text, values: [serve_now, INGESTION_LAG_GRACE_SECONDS, INGESTION_LAG_SUPPRESS_SECONDS] };
+      ) AS newest_usable_coverage_game,
+      -- Metric B — box-score absence (REPORTED only)
+      (SELECT count(*) FILTER (
+         WHERE tip < ($1::timestamptz - make_interval(secs => $2))
+       )::int FROM pgs_absent) AS pgs_absent_past_grace_48h,
+      (SELECT count(*) FILTER (
+         WHERE tip < ($1::timestamptz - make_interval(secs => $3))
+       )::int FROM pgs_absent) AS pgs_absent_past_fire_96h,
+      (SELECT min(tip) FROM pgs_absent) AS oldest_pgs_absent_tip`;
+  return { text, values: [serve_now, INGESTION_LAG_GRACE_SECONDS, INGESTION_LAG_SUPPRESS_SECONDS, INGESTION_COVERAGE_RECENT_GAMES_N] };
 }
 
 interface IngestionLagRow {
-  unresolved_past_grace_48h: number;
-  unresolved_past_fire_96h: number;
-  oldest_unresolved_tip: string | Date | null;
-  newest_ingested_game: string | Date | null;
+  coverage_unresolved_past_grace_48h: number;
+  coverage_unresolved_past_fire_96h: number;
+  oldest_coverage_unresolved_tip: string | Date | null;
+  newest_usable_coverage_game: string | Date | null;
+  pgs_absent_past_grace_48h: number;
+  pgs_absent_past_fire_96h: number;
+  oldest_pgs_absent_tip: string | Date | null;
 }
 
 function toIso(v: string | Date | null): string | null {
@@ -310,17 +365,23 @@ export class PostgresBoardRepository implements BoardRepository {
     const pool = getBoardPool();
     const res = await pool.query(text, values as unknown[]);
     const row = (res.rows[0] ?? {
-      unresolved_past_grace_48h: 0,
-      unresolved_past_fire_96h: 0,
-      oldest_unresolved_tip: null,
-      newest_ingested_game: null,
+      coverage_unresolved_past_grace_48h: 0,
+      coverage_unresolved_past_fire_96h: 0,
+      oldest_coverage_unresolved_tip: null,
+      newest_usable_coverage_game: null,
+      pgs_absent_past_grace_48h: 0,
+      pgs_absent_past_fire_96h: 0,
+      oldest_pgs_absent_tip: null,
     }) as IngestionLagRow;
     return {
       source_kind: 'postgres',
-      unresolved_past_grace_48h: row.unresolved_past_grace_48h,
-      unresolved_past_fire_96h: row.unresolved_past_fire_96h,
-      oldest_unresolved_tip: toIso(row.oldest_unresolved_tip),
-      newest_ingested_game: toIso(row.newest_ingested_game),
+      coverage_unresolved_past_grace_48h: row.coverage_unresolved_past_grace_48h,
+      coverage_unresolved_past_fire_96h: row.coverage_unresolved_past_fire_96h,
+      oldest_coverage_unresolved_tip: toIso(row.oldest_coverage_unresolved_tip),
+      newest_usable_coverage_game: toIso(row.newest_usable_coverage_game),
+      pgs_absent_past_grace_48h: row.pgs_absent_past_grace_48h,
+      pgs_absent_past_fire_96h: row.pgs_absent_past_fire_96h,
+      oldest_pgs_absent_tip: toIso(row.oldest_pgs_absent_tip),
     };
   }
 

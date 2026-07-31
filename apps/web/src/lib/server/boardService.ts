@@ -79,16 +79,22 @@ export async function getBoardData(
   // Fail-loud if the active method were ever mis-configured (v2 authority §7).
   assertKnownMethodVersion(ACTIVE_BOARD_METHOD_VERSION);
 
-  // V1-OP-4 INGESTION GATE (system-level, serve-time). A read-only probe
-  // measures historical ingestion lag (past-tip games with NO
-  // player_game_stats row) against the request's single `serve_now`; the PURE
-  // decision suppresses the WHOLE Board when the oldest unresolved game is
-  // older than the 96h suppress threshold. This is ORTHOGONAL to the D-A1
-  // market gate below — an additional system-level precondition. On the LIVE
-  // (postgres) source EVERY serve decision emits one greppable structured log
-  // (distinct prefix per path) so lag growth is observable BEFORE it fires;
-  // the FIXTURE/preview source is exempt (no live ingestion → no suppress, no
-  // log). All-or-nothing: never a per-player drop.
+  // V1-OP-4 / V1-OP-4c INGESTION GATE (system-level, serve-time). A read-only
+  // probe measures historical ingestion lag against the request's single
+  // `serve_now` as TWO metrics: Metric A — engine coverage (past-tip games with
+  // NO usable `historical_line_results` row — the table the evidence engine
+  // actually consumes) — DRIVES suppression; Metric B — box-score absence
+  // (past-tip games with NO `player_game_stats` row) — REPORTED only. The PURE
+  // decision suppresses the WHOLE Board when the oldest coverage-unresolved game
+  // (Metric A) is older than the 96h suppress threshold, so a restored box score
+  // with no closing line can no longer serve a window the engine is blind to
+  // (GAP-26). This is ORTHOGONAL to the D-A1 market gate below — an additional
+  // system-level precondition. On the LIVE (postgres) source EVERY serve
+  // decision emits one greppable structured log carrying BOTH metric blocks
+  // (distinct prefix per path; `coverage_*` and `pgs_*` blocks separated by
+  // ` || `) so lag growth is observable BEFORE it fires; the FIXTURE/preview
+  // source is exempt (no live ingestion → no suppress, no log). All-or-nothing:
+  // never a per-player drop.
   const lagMetric = await repo.probeIngestionLag(serve_now);
   const currency = decideIngestionCurrency(lagMetric, serve_now);
   if (!currency.exempt) {

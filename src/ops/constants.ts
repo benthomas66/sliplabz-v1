@@ -73,3 +73,64 @@ export const INGESTION_LAG_GRACE_SECONDS = 172800; // 48h
  * this bound.
  */
 export const INGESTION_LAG_SUPPRESS_SECONDS = 345600; // 96h
+
+// ---------------------------------------------------------------------------
+// V1-OP-4c — the ENGINE'S usable-coverage set, MIRRORED by the ingestion gate
+// (GAP-26). Ops-not-method.
+//
+// The evidence engine builds its threshold-window observations from
+// `historical_line_results` rows whose `coverage_state` is one of these values
+// (`src/evidence/driver/readModelInputBuilder.ts` → `readHistoricalGamesForPlayerMarket`;
+// `src/computation/historicalSeriesRead.ts`). Both engine readers INLINE
+// `coverage_state IN ('complete', 'single_book')`. The V1-OP-4c ingestion gate
+// re-anchors its suppression trigger to THIS same set — the table the engine
+// actually consumes — so restoring box scores can no longer lift suppression
+// while the engine is still blind to a past-tip game with no usable closing
+// line.
+//
+// This is a MIRROR, NOT a shared owner: the engine readers keep their own
+// inline literal (editing them to import this constant would break the
+// compose-only boundary). A DRIFT-TRIPWIRE TEST reads the engine reader source
+// and fails loud if the engine's set ever diverges from this constant, so the
+// two cannot silently part ways.
+// ---------------------------------------------------------------------------
+
+/**
+ * The `historical_line_results.coverage_state` values the evidence engine
+ * treats as a USABLE closing-line observation. The ingestion gate mirrors this
+ * set to measure engine-coverage lag. Byte-identical to the engine readers;
+ * bound by the drift-tripwire test.
+ */
+export const USABLE_HLR_COVERAGE_STATES = ['complete', 'single_book'] as const;
+
+/**
+ * V1-OP-4c LOWER BOUND (GAP-26 follow-through). The ingestion gate measures its
+ * TWO metrics over only the N most recent past-tip games LEAGUE-WIDE (by
+ * scheduled tipoff), not over all history. A game-count bound — never a calendar
+ * window — because:
+ *   * A calendar lookback would SCROLL A LIVE STALL OUT OF VIEW: at day (window+1)
+ *     of an unbroken stall the failure ages past the horizon and the gate lifts
+ *     on stale evidence — the same "guard stops guarding under an unstated
+ *     condition" defect class as GAP-26. A game-count bound cannot: an active
+ *     stall keeps the most-recent games unresolved, always inside the window.
+ *   * It EXCLUDES ANCIENT PERMANENT HOLES by construction, so the gate can LIFT
+ *     once recent ingestion is healthy. (Real example at authoring time: two
+ *     final games with box scores but no closing line — 2026-06-03 and
+ *     2026-06-30 — would otherwise pin `oldest_coverage_unresolved_tip` forever.)
+ *
+ * SIZING (verified against hosted data 2026-07-31; oldest permanent hole
+ * 2026-06-30 sat at rank 70, the 07-12 stall spanned ranks 1-43):
+ *   * Floor 43 — cover the entire current stall (oldest unresolved = 07-12).
+ *   * Ceiling 69 — strictly below the nearest permanent hole (rank 70); any
+ *     N ≥ 70 re-pins suppression on 2026-06-30.
+ *   * N = 55 centres the feasible band [43,69]: ±20% = [44,66] BOTH stay valid
+ *     (each excludes the June holes and catches the full stall — 42 unresolved,
+ *     oldest 07-12). 55 league games ≈ each team's last ~8-9 games (13 teams,
+ *     2 per game), fully vouching L5 and most of L10.
+ *
+ * NOTE the deliberate limit: the FULL L20 reach is ~130 league games
+ * (20 × 13/2) — INFEASIBLE here, as it re-includes the rank-70 hole. So L20's
+ * deeper tail and the UNBOUNDED season window reach past N and are NOT vouched
+ * by this gate; that residual is registered as GAP-27 (not solved here).
+ */
+export const INGESTION_COVERAGE_RECENT_GAMES_N = 55;
