@@ -138,10 +138,12 @@ test('no projected string field encodes a rate, a percentage, or a short "N/M" c
   for (const { proj } of await allProjections()) {
     const strings: string[] = [
       proj.player, proj.team, proj.market, proj.classification, proj.classification_label_full,
+      proj.classification_label_compact,
       proj.disclosure_g1, proj.disclosure_g2, proj.market_context.selection_method,
       proj.market_context.consensus_coverage_label,
       ...(proj.direction !== null ? [proj.direction] : []),
-      ...(proj.tipoff_utc !== null ? [proj.tipoff_utc] : []),
+      ...(proj.matchup !== null ? [proj.matchup] : []),
+      ...(proj.tipoff !== null ? [proj.tipoff] : []),
       ...(proj.evaluated_source_kind !== null ? [proj.evaluated_source_kind] : []),
       ...(proj.binding_cap_tag !== null ? [proj.binding_cap_tag] : []),
       ...(proj.provenance_marker !== null ? [proj.provenance_marker] : []),

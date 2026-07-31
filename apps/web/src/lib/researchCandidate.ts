@@ -54,6 +54,12 @@ export interface ResearchCandidate {
   readonly evaluated_line: number | null;
   readonly tipoff_utc: string | null;
 
+  // V1-8b — ALREADY-KNOWN game context for the header matchup (opponent + is_home,
+  // cities). Server-side only; the projection formats it to a display string.
+  readonly opponent_city?: string | null;
+  readonly player_team_city?: string | null;
+  readonly is_home?: boolean | null;
+
   // the committed engine output for this grain (classification, direction,
   // components incl. composite_score, caps, and the DR-26 reason set)
   readonly profile_output: EvidenceProfileOutput;

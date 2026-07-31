@@ -1,88 +1,70 @@
-// V1-7b — the per-game evidence chart (server component, SVG).
+// V1-8b — the per-game evidence chart, rebuilt for MOBILE READABILITY (server
+// component, no client JS, no client-side calculation). CHARTS ARE COPY: past
+// stat values relative to the evaluated line, oldest→newest — no prediction, no
+// trend arrows, no confidence, no good/bad valence.
 //
-// CHARTS ARE COPY. This shows historical performance RELATIVE TO THE EVALUATED
-// LINE as fact, including the games that fell below (the "misses"). It implies
-// NO prediction: no trend arrows, no confidence encodings, no good/bad valence.
+// R4 fixes: ONE compact bar per position with ONE short date label beneath it (no
+// overlapping opponent names, no repeated "ineligible" prose inside the graph);
+// ineligible/DNP positions are GHOST bars holding their chronological place; wide
+// spans (L20/Season) SCROLL horizontally rather than compressing into illegibility.
 //
-// COLOR SCALE (documented in-place, valence-neutral — NOT green/red; neither
-// hue reads as good/bad; reused from V1-6f previewVariantStyle):
-//   above the line  → azure  (#57A6D9)
-//   below the line  → violet (#B58AD6)
-//   on the line     → slate  (#8B929B)
-//   did not play / ineligible → GHOST: no fill, dashed slate outline
-// Bar length encodes the STAT VALUE (a historical count), NEVER the composite score.
+// Valence-neutral hues (committed): above→azure, below→violet, on-line→slate,
+// ghost→dashed slate outline. Bar height encodes the STAT VALUE, never the score.
 
 import type { ResearchSeriesEntry } from '../../src/lib/researchProjection';
 import { PREVIEW_HUES } from '../../src/lib/previewVariantStyle';
 
+const H = PREVIEW_HUES;
+
 function barColor(o: ResearchSeriesEntry['outcome']): string {
   switch (o) {
-    case 'above': return PREVIEW_HUES.over;
-    case 'below': return PREVIEW_HUES.under;
-    case 'equal': return PREVIEW_HUES.neutral;
+    case 'above': return H.over;
+    case 'below': return H.under;
+    case 'equal': return H.neutral;
     default: return 'transparent';
   }
 }
 
-export function EvidenceChart({ series, evaluatedLine }: { series: ReadonlyArray<ResearchSeriesEntry>; evaluatedLine: number | null }) {
-  const W = 358, H = 210, padL = 8, padR = 8, padTop = 18, padBottom = 46;
-  const plotW = W - padL - padR;
-  const plotH = H - padTop - padBottom;
-  const n = Math.max(series.length, 1);
-  const slot = plotW / n;
-  const barW = Math.min(22, slot * 0.6);
+/** One short date label — "6/28" — never the opponent (which would overlap). The
+ *  opponent lives in the game-history rows below, one per line. */
+function shortDate(iso: string): string {
+  const m = /\d{4}-(\d{2})-(\d{2})/.exec(iso);
+  return m === null ? '' : `${Number(m[1])}/${Number(m[2])}`;
+}
 
-  const statMax = Math.max(
-    evaluatedLine ?? 0,
-    ...series.map((s) => s.stat_value ?? 0),
-    1,
-  );
-  const yFor = (v: number) => padTop + plotH - (v / statMax) * plotH;
-  const baseline = padTop + plotH;
-  const lineY = evaluatedLine === null ? null : yFor(evaluatedLine);
+export function EvidenceChart({ series, evaluatedLine }: { series: ReadonlyArray<ResearchSeriesEntry>; evaluatedLine: number | null }): React.ReactElement {
+  const PLOT_H = 128;
+  const COL = 34; // fixed per-column width → wide spans scroll instead of squeezing
+  const statMax = Math.max(evaluatedLine ?? 0, ...series.map((s) => s.stat_value ?? 0), 1);
+  const linePct = evaluatedLine === null ? null : (evaluatedLine / statMax) * PLOT_H;
 
   return (
     <figure style={{ margin: 0 }} data-testid="evidence-chart">
-      <svg width="100%" viewBox={`0 0 ${W} ${H}`} role="img" aria-label="Per-game stat values against the evaluated line, oldest to newest">
-        {/* threshold (evaluated) line */}
-        {lineY !== null ? (
-          <g>
-            <line x1={padL} y1={lineY} x2={W - padR} y2={lineY} stroke={PREVIEW_HUES.text} strokeDasharray="4 3" strokeWidth={1} />
-            <text x={W - padR} y={lineY - 3} textAnchor="end" fontSize={9} fill={PREVIEW_HUES.quiet}>line {evaluatedLine}</text>
-          </g>
-        ) : null}
-        {series.map((s, i) => {
-          const cx = padL + slot * i + slot / 2;
-          const x = cx - barW / 2;
-          const ghost = s.stat_value === null || !s.counted;
-          const label = s.is_home === null ? s.opponent_label : `${s.is_home ? 'vs' : '@'} ${s.opponent_label}`;
-          if (ghost) {
-            // DNP / ineligible — a distinct ghost placeholder, never a valued bar.
-            const gh = 20;
+      <div data-testid="chart-scroll" style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
+        <div style={{ position: 'relative', display: 'inline-flex', alignItems: 'flex-end', gap: 0, height: PLOT_H + 26, paddingTop: 14, minWidth: '100%' }}>
+          {/* evaluated (threshold) line across the plot */}
+          {linePct !== null ? (
+            <div aria-hidden style={{ position: 'absolute', left: 0, right: 0, bottom: 26 + linePct, borderTop: `1px dashed ${H.text}`, opacity: 0.6 }} />
+          ) : null}
+          {series.map((s, i) => {
+            const ghost = s.stat_value === null || !s.counted;
+            const h = ghost ? 22 : Math.max(4, (s.stat_value! / statMax) * PLOT_H);
             return (
-              <g key={i}>
-                <rect x={x} y={baseline - gh} width={barW} height={gh} fill="none" stroke={PREVIEW_HUES.neutral} strokeDasharray="3 2" strokeWidth={1} opacity={0.7} />
-                <text x={cx} y={baseline - gh - 3} textAnchor="middle" fontSize={8} fill={PREVIEW_HUES.quiet}>
-                  {s.display_status === 'did_not_play' ? 'DNP' : 'inelig.'}
-                </text>
-                <text x={cx} y={baseline + 12} textAnchor="middle" fontSize={7} fill={PREVIEW_HUES.quiet}>{label}</text>
-              </g>
+              <div key={i} data-testid="chart-col" data-kind={ghost ? 'ineligible' : 'eligible'} style={{ width: COL, flex: '0 0 auto', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-end', height: '100%' }}>
+                {!ghost ? <span style={{ fontSize: 8, color: H.text, marginBottom: 2 }}>{s.stat_value}</span> : null}
+                <div style={ghost
+                  ? { width: 16, height: h, border: `1px dashed ${H.neutral}`, borderRadius: 2, opacity: 0.6 }
+                  : { width: 16, height: h, background: barColor(s.outcome), borderRadius: 2 }} />
+                <span style={{ fontSize: 8, color: H.quiet, marginTop: 4, whiteSpace: 'nowrap' }}>{shortDate(s.game_date_utc)}</span>
+              </div>
             );
-          }
-          const y = yFor(s.stat_value!);
-          return (
-            <g key={i}>
-              <rect x={x} y={y} width={barW} height={baseline - y} fill={barColor(s.outcome)} rx={2} />
-              <text x={cx} y={y - 3} textAnchor="middle" fontSize={8} fill={PREVIEW_HUES.text}>{s.stat_value}</text>
-              <text x={cx} y={baseline + 12} textAnchor="middle" fontSize={7} fill={PREVIEW_HUES.quiet}>{label}</text>
-            </g>
-          );
-        })}
-      </svg>
-      <figcaption style={{ fontSize: 11, color: PREVIEW_HUES.quiet, marginTop: 6 }} data-testid="chart-legend">
-        Bars are past stat values, oldest to newest; the dashed line is the evaluated line.
-        Above the line is azure, below is violet, on the line is slate — a neutral pair, not a good/bad scale.
-        Did-not-play and ineligible games are dashed ghosts, not evidence in the counts. This is historical fact, not a prediction.
+          })}
+        </div>
+      </div>
+      <figcaption style={{ fontSize: 10.5, color: H.quiet, marginTop: 6, lineHeight: 1.4 }} data-testid="chart-legend">
+        Bars are past stat values, oldest→newest; the dashed line is the evaluated line.
+        Above is azure, below is violet, on the line is slate. Dashed ghosts are games the
+        player did not play or was ineligible — they hold their place but are not counted.
       </figcaption>
     </figure>
   );

@@ -161,7 +161,12 @@ function grain(n: number, market: string, label: string, c: Omit<ResearchCandida
   return {
     internal_game_id: gid, internal_player_id: pid, market_key: market, label,
     // computation_version stands in for the persisted profile's stored value.
-    candidate: { ...c, method_version: 'evidence_method_v2', computation_version: 1, market },
+    // Upcoming-game matchup context (opponent/home-away/cities) for the R1 header;
+    // display-safe city names only — never internal ids. Grains may override.
+    candidate: {
+      player_team_city: c.team, opponent_city: OPP[n % OPP.length]!, is_home: n % 2 === 0,
+      ...c, method_version: 'evidence_method_v2', computation_version: 1, market,
+    },
   };
 }
 

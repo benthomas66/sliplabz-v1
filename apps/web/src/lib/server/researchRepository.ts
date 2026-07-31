@@ -150,17 +150,23 @@ export class PostgresResearchRepository implements ResearchRepository {
         const built = await makeReadModelInputBuilderV2Core({ today_utc_date: today, reference_date: today })(grain, tx);
         if (built === null) return null; // market_key outside the launch set
 
-        // 3) identity + tipoff context.
+        // 3) identity + game context (tipoff + matchup opponent; V1-8b). No new
+        //    computation — an ALREADY-KNOWN game-context read for display.
         const idr = await tx.query(
           `SELECT p.display_name AS player, COALESCE(t.display_name, '') AS team,
-                  g.scheduled_start_utc AS tipoff
+                  g.scheduled_start_utc AS tipoff,
+                  (g.home_team_id = p.current_team_id) AS is_home,
+                  COALESCE(t.city, t.display_name) AS player_team_city,
+                  COALESCE(opp.city, opp.display_name) AS opponent_city
              FROM players p
              LEFT JOIN teams t ON t.internal_team_id = p.current_team_id
              JOIN games g ON g.internal_game_id = $1::uuid
+             LEFT JOIN teams opp ON opp.internal_team_id =
+               CASE WHEN g.home_team_id = p.current_team_id THEN g.away_team_id ELSE g.home_team_id END
             WHERE p.internal_player_id = $2::uuid`,
           [internal_game_id, internal_player_id],
         );
-        const idrow = (idr.rows[0] ?? { player: '', team: '', tipoff: null }) as { player: string; team: string; tipoff: string | Date | null };
+        const idrow = (idr.rows[0] ?? { player: '', team: '', tipoff: null, is_home: null, player_team_city: null, opponent_city: null }) as { player: string; team: string; tipoff: string | Date | null; is_home: boolean | null; player_team_city: string | null; opponent_city: string | null };
         const tipoff_utc = idrow.tipoff instanceof Date ? idrow.tipoff.toISOString() : idrow.tipoff;
 
         const components: ComponentValues = {
@@ -187,6 +193,7 @@ export class PostgresResearchRepository implements ResearchRepository {
           computation_version: row.computation_version,
           player: idrow.player, team: idrow.team, market: market_key,
           evaluated_line: row.evaluated_line, tipoff_utc,
+          opponent_city: idrow.opponent_city, player_team_city: idrow.player_team_city, is_home: idrow.is_home,
           profile_output,
           windows: built.input.threshold_windows,
           series,

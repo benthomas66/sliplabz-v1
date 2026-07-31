@@ -348,6 +348,60 @@ test('V1-7b /design-preview/research/1 (aged): the aged-historical marker is in 
   assert.ok(!html.includes(DISTINCTIVE_PAID_BOOK), 'paid book leaked into aged grain');
 });
 
+// V1-8b — COMPREHENSION PASS over the REAL rendered Research View (grain 0,
+// fresh, Strong Over, player_points). Proves the presentation rewrite renders
+// plain language and leaks no raw enum / ISO timestamp / reason-code-in-default /
+// internal identity, and that the authorized interactions are server-present.
+test('V1-8b research/0: plain matchup+market+finding, window selector (L10 default), collapsed technical scoring, no raw enum/ISO/identity', async () => {
+  const html = await (await fetch(`http://localhost:${FIXTURE_PORT}/design-preview/research/0`)).text();
+  const visible = html
+    .replace(/<script[\s\S]*?<\/script>/g, ' ').replace(/<style[\s\S]*?<\/style>/g, ' ').replace(/<[^>]+>/g, ' ');
+
+  // (R1) consumer matchup + human tipoff (ET, no date/suffix) + plain market/line.
+  assert.ok(html.includes('data-testid="rv-matchup"'), 'matchup absent');
+  assert.ok(html.includes('Preview City') && html.includes('Mock Bay'), 'matchup teams absent');
+  assert.ok(/7:00\s*PM/.test(visible), 'human ET tipoff absent');
+  assert.ok(html.includes('Points'), 'plain market label absent');
+  // (R2) quiet finding, not the big §D.2 card in the header.
+  assert.ok(html.includes('Evidence leans over'), 'plain finding absent');
+
+  // (R3) window selector: four chips, L10 checked by default, single selected block.
+  for (const w of ['L5', 'L10', 'L20', 'season']) assert.ok(html.includes(`data-testid="window-chip-${w}"`), `window chip ${w} absent`);
+  assert.ok(/id="rv-w-L10"[^>]*\bchecked\b/.test(html) || /\bchecked\b[^>]*id="rv-w-L10"/.test(html), 'L10 is not checked by default');
+  // (R8) plain-language reason present in the DEFAULT path.
+  assert.ok(html.includes('Recent windows point in the same direction.'), 'plain-language reason absent');
+  // (R9) technical scoring is server-rendered but COLLAPSED (no `open`).
+  const det = /<details[^>]*data-testid="technical-scoring"([^>]*)>/.exec(html);
+  assert.ok(det !== null, 'technical-scoring details absent');
+  assert.ok(!/\bopen\b/.test(det[1]!), 'technical scoring must be collapsed by default');
+  // (R7) market context in plain language.
+  assert.ok(html.includes('Consensus line'), 'plain market-context heading absent');
+
+  // CONTAINMENT — raw enums / reason-code-in-default / ISO timestamp / identities.
+  assert.ok(!visible.includes('player_points'), 'raw market enum leaked into visible text');
+  assert.ok(!visible.includes('sportsbook_consensus'), 'raw source enum leaked into visible text');
+  assert.ok(!visible.includes('unique_modal') && !visible.includes('one_sided'), 'raw market-context enum leaked into visible text');
+  // The raw tipoff ISO timestamp must never render (matchup shows ET time only).
+  assert.ok(!html.includes('2026-07-27T23:00'), 'raw tipoff ISO timestamp leaked');
+  assert.ok(!/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(visible), 'a raw ISO timestamp is present in visible text');
+  // Amendment 21 + §2.6 — internal identities and the raw observation key never cross.
+  for (const k of ['internal_game_id', 'internal_player_id', 'line_observed_at']) {
+    assert.ok(!html.includes(k), `forbidden data key "${k}" present in the research body`);
+  }
+  assert.ok(!html.includes(DISTINCTIVE_PAID_BOOK) && !html.includes(PAID_PRICE_DIGITS), 'paid canary leaked');
+
+  // (R9) no probability/pick/EV/confidence framing in AUTHORED visible text — the
+  // §G.1/§G.2 authority disclosures (which NEGATE probability) are stripped first.
+  const authored = html
+    .replace(/<p[^>]*data-testid="disclosure-g1"[\s\S]*?<\/p>/g, ' ')
+    .replace(/<p[^>]*data-testid="disclosure-g1-full"[\s\S]*?<\/p>/g, ' ')
+    .replace(/<div[^>]*data-testid="disclosure-g2"[\s\S]*?<\/div>/g, ' ')
+    .replace(/<script[\s\S]*?<\/script>/g, ' ').replace(/<style[\s\S]*?<\/style>/g, ' ').replace(/<[^>]+>/g, ' ');
+  for (const bad of [/\bprobabilit/i, /\bhit rate\b/i, /\bexpected value\b/i, /\bconfidence\b/i, /\bpick\b/i, /%/]) {
+    assert.ok(!bad.test(authored), `forbidden framing ${bad} in authored research text`);
+  }
+});
+
 test('client JS bundles contain no prohibited value, no db driver code, no connection string, no env var name', () => {
   const files = walk(join(APP_DIR, '.next', 'static')).filter((f) => f.endsWith('.js'));
   assert.ok(files.length > 0, 'no client bundles found to scan');

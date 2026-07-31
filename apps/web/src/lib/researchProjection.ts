@@ -24,6 +24,7 @@ import {
   DISCLOSURE_G2_TEXT,
   fullClassificationLabel,
 } from '../../../../src/explanation/index.js';
+import { formatMatchup, formatTipoff } from './board/bandView.js';
 import type {
   EvidenceClassification,
   EvidenceDirection,
@@ -120,11 +121,15 @@ export interface ResearchProjection {
   readonly team: string;
   readonly market: string;
   readonly evaluated_line: number | null;
-  readonly tipoff_utc: string | null;
+  // V1-8b — DISPLAY-SAFE game context (server-formatted; no raw ISO, no ids).
+  readonly matchup: string | null;
+  readonly tipoff: string | null;
   readonly evaluated_source_kind: EvidenceEvaluatedSourceKind | null;
   // full §D.2 label + strength-preserving classification
   readonly classification: EvidenceClassification;
   readonly classification_label_full: string;
+  /** V1-8b — the §D.2 compact label (verbatim), for the quiet finding summary. */
+  readonly classification_label_compact: string;
   readonly direction: EvidenceDirection | null;
   // quality cap
   readonly quality_capped: boolean;
@@ -162,8 +167,8 @@ export interface ResearchProjection {
 
 /** The EXACT top-level key set of a ResearchProjection. */
 export const RESEARCH_PROJECTION_KEYS = [
-  'player', 'team', 'market', 'evaluated_line', 'tipoff_utc', 'evaluated_source_kind',
-  'classification', 'classification_label_full', 'direction',
+  'player', 'team', 'market', 'evaluated_line', 'matchup', 'tipoff', 'evaluated_source_kind',
+  'classification', 'classification_label_full', 'classification_label_compact', 'direction',
   'quality_capped', 'quality_cap_reason', 'binding_cap_tag',
   'reasons', 'windows', 'series', 'market_context',
   'provenance_marker', 'disclosure_g1', 'disclosure_g2',
@@ -256,11 +261,16 @@ export function constructResearchProjection(c: ResearchCandidate): ResearchProje
     team: c.team,
     market: c.market,
     evaluated_line: c.evaluated_line,
-    tipoff_utc: c.tipoff_utc,
+    // V1-8b — server-format matchup + tipoff (US Eastern), reusing the committed
+    // Board utilities. Raw ISO / cities / is_home stay on the candidate.
+    matchup: (c.opponent_city != null && c.player_team_city != null && c.is_home != null)
+      ? formatMatchup(c.player_team_city, c.opponent_city, c.is_home) : null,
+    tipoff: c.tipoff_utc != null ? formatTipoff(c.tipoff_utc) : null,
     evaluated_source_kind: out.evaluated_source_kind,
 
     classification: out.classification,
     classification_label_full: fullClassificationLabel(out.classification), // §D.2 full form, verbatim
+    classification_label_compact: compact.compact_label, // §D.2 compact form, verbatim
     direction: out.direction,
 
     quality_capped: out.quality_capped,
