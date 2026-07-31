@@ -13,6 +13,11 @@ import { getBoardPool } from './db.js';
 import { assertKnownMethodVersion, type MethodVersion } from '../method.js';
 import type { RankedCandidate } from '../rankedCandidate.js';
 import { readEvidenceInputBundlesBatched } from '../../../../../src/evidence/v2/readEvidenceInputs.js';
+import type { IngestionLagMetric } from '../../../../../src/ops/ingestionGate.js';
+import {
+  INGESTION_LAG_GRACE_SECONDS,
+  INGESTION_LAG_SUPPRESS_SECONDS,
+} from '../../../../../src/ops/constants.js';
 import type { Tx } from '../../../../../src/db/transaction.js';
 import type {
   EvidenceProfileOutput,
@@ -32,6 +37,16 @@ import type {
 export interface BoardRepository {
   /** Fetch ranked candidates for EXACTLY one method version. */
   queryRankedCandidates(method: MethodVersion): Promise<ReadonlyArray<RankedCandidate>>;
+
+  /**
+   * V1-OP-4 — read-only ingestion-lag probe. Reports how far historical stat
+   * ingestion has fallen behind (past-tip games with NO `player_game_stats`
+   * row), measured against the request's single `serve_now`. The FIXTURE
+   * source is EXEMPT (no live ingestion → reports "current"). Read-only; it
+   * NEVER references game status or the newest-final game, and it writes
+   * nothing.
+   */
+  probeIngestionLag(serve_now: string): Promise<IngestionLagMetric>;
 }
 
 /**
@@ -234,7 +249,81 @@ function rowToCandidate(row: BoardQueryRow, method: MethodVersion): RankedCandid
   };
 }
 
+/**
+ * V1-OP-4 — PURE, testable construction of the read-only ingestion-lag probe
+ * query. `unresolved(g)` = `games.scheduled_start_utc < serve_now` (future
+ * games excluded) AND NOT EXISTS a `player_game_stats` row for that
+ * `internal_game_id`. It NEVER references game `status` or a newest-final
+ * game — pgs-absence only (finalization is itself broken, so a status gate
+ * would never fire). Grace (48h) and suppress (96h) seconds are BOUND
+ * parameters from the ops constants, so the SQL counts and the pure decision
+ * share one source of truth. Read-only.
+ */
+export function buildIngestionLagQuery(serve_now: string): {
+  text: string;
+  values: readonly (string | number)[];
+} {
+  const text = `
+    WITH unresolved AS (
+      SELECT g.scheduled_start_utc
+        FROM games g
+       WHERE g.scheduled_start_utc < $1::timestamptz
+         AND NOT EXISTS (
+           SELECT 1 FROM player_game_stats pgs
+            WHERE pgs.internal_game_id = g.internal_game_id
+         )
+    )
+    SELECT
+      count(*) FILTER (
+        WHERE scheduled_start_utc < ($1::timestamptz - make_interval(secs => $2))
+      )::int AS unresolved_past_grace_48h,
+      count(*) FILTER (
+        WHERE scheduled_start_utc < ($1::timestamptz - make_interval(secs => $3))
+      )::int AS unresolved_past_fire_96h,
+      min(scheduled_start_utc) AS oldest_unresolved_tip,
+      (
+        SELECT max(g2.scheduled_start_utc) FROM games g2
+         WHERE EXISTS (
+           SELECT 1 FROM player_game_stats p2
+            WHERE p2.internal_game_id = g2.internal_game_id
+         )
+      ) AS newest_ingested_game
+    FROM unresolved`;
+  return { text, values: [serve_now, INGESTION_LAG_GRACE_SECONDS, INGESTION_LAG_SUPPRESS_SECONDS] };
+}
+
+interface IngestionLagRow {
+  unresolved_past_grace_48h: number;
+  unresolved_past_fire_96h: number;
+  oldest_unresolved_tip: string | Date | null;
+  newest_ingested_game: string | Date | null;
+}
+
+function toIso(v: string | Date | null): string | null {
+  if (v === null) return null;
+  return v instanceof Date ? v.toISOString() : v;
+}
+
 export class PostgresBoardRepository implements BoardRepository {
+  async probeIngestionLag(serve_now: string): Promise<IngestionLagMetric> {
+    const { text, values } = buildIngestionLagQuery(serve_now);
+    const pool = getBoardPool();
+    const res = await pool.query(text, values as unknown[]);
+    const row = (res.rows[0] ?? {
+      unresolved_past_grace_48h: 0,
+      unresolved_past_fire_96h: 0,
+      oldest_unresolved_tip: null,
+      newest_ingested_game: null,
+    }) as IngestionLagRow;
+    return {
+      source_kind: 'postgres',
+      unresolved_past_grace_48h: row.unresolved_past_grace_48h,
+      unresolved_past_fire_96h: row.unresolved_past_fire_96h,
+      oldest_unresolved_tip: toIso(row.oldest_unresolved_tip),
+      newest_ingested_game: toIso(row.newest_ingested_game),
+    };
+  }
+
   async queryRankedCandidates(method: MethodVersion): Promise<ReadonlyArray<RankedCandidate>> {
     assertKnownMethodVersion(method);
     const { text, values } = buildBoardQuery(method);

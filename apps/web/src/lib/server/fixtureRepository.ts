@@ -15,6 +15,7 @@ import 'server-only';
 import type { BoardRepository } from './boardRepository.js';
 import type { RankedCandidate, BoardConsensusContext } from '../rankedCandidate.js';
 import { assertKnownMethodVersion, type MethodVersion } from '../method.js';
+import { FIXTURE_INGESTION_METRIC, type IngestionLagMetric } from '../../../../../src/ops/ingestionGate.js';
 import type { EvidenceProfileOutput, ComponentValues } from '../../../../../src/evidence/types.js';
 import type {
   EvidenceInputBundleState,
@@ -250,5 +251,16 @@ export class FixtureBoardRepository implements BoardRepository {
   async queryRankedCandidates(method: MethodVersion): Promise<ReadonlyArray<RankedCandidate>> {
     assertKnownMethodVersion(method);
     return this.rows.filter((r) => r.method_version === method);
+  }
+
+  /**
+   * V1-OP-4 — the FIXTURE/preview source has NO live ingestion (it is design
+   * data, not a live pipeline), so the ingestion gate is EXEMPT here: it
+   * reports "current", never suppresses, and never emits the serve-time log.
+   * The design-preview boards and the serialization audit therefore always
+   * render.
+   */
+  async probeIngestionLag(_serve_now: string): Promise<IngestionLagMetric> {
+    return FIXTURE_INGESTION_METRIC;
   }
 }

@@ -62,7 +62,7 @@ Grammar essentials: eight primitives (Finding Mark · Evidence Strip · Margin G
 
 Deferred with their own registrations: **V1-ARCH-2** (unified classified evaluation object — not a prerequisite, not opportunistic) · **V1-OPS-3** (poll failure/skip signaling — OPEN) · G1 filtered windows · G2 H2H window · G3 supporting-stats inventory · G4 line-movement projection.
 
-**Open gaps register (`V1_OPEN_GAPS.md`):** recent — GAP-23 (internal game id in Research route, non-blocking) · GAP-24 (no preview route for the current Board surface, non-blocking) · V1-7d **CLOSED by V1-8b**. See the register for the full list.
+**Open gaps register (`V1_OPEN_GAPS.md`):** recent — GAP-23 (internal game id in Research route, non-blocking) · GAP-24 (no preview route for the current Board surface, non-blocking) · GAP-25 (ingestion gate fail-safe suppression indistinguishable from real lag, non-blocking, → V1-OP-4b) · V1-7d **CLOSED by V1-8b**. See the register for the full list.
 
 ---
 

@@ -8,6 +8,10 @@ import 'server-only';
 
 import { dr20Compare } from '../../../../../src/evidence/classification.js';
 import { evaluateV2ServingGate } from '../../../../../src/evidence/v2/servingGate.js';
+import {
+  decideIngestionCurrency,
+  buildIngestionServeLogLine,
+} from '../../../../../src/ops/ingestionGate.js';
 import { ACTIVE_BOARD_METHOD_VERSION, assertKnownMethodVersion } from '../method.js';
 import { constructBoardProjection, type BoardProjection } from '../boardProjection.js';
 import type { RankedCandidate } from '../rankedCandidate.js';
@@ -74,6 +78,28 @@ export async function getBoardData(
 ): Promise<BoardData> {
   // Fail-loud if the active method were ever mis-configured (v2 authority §7).
   assertKnownMethodVersion(ACTIVE_BOARD_METHOD_VERSION);
+
+  // V1-OP-4 INGESTION GATE (system-level, serve-time). A read-only probe
+  // measures historical ingestion lag (past-tip games with NO
+  // player_game_stats row) against the request's single `serve_now`; the PURE
+  // decision suppresses the WHOLE Board when the oldest unresolved game is
+  // older than the 96h suppress threshold. This is ORTHOGONAL to the D-A1
+  // market gate below — an additional system-level precondition. On the LIVE
+  // (postgres) source EVERY serve decision emits one greppable structured log
+  // (distinct prefix per path) so lag growth is observable BEFORE it fires;
+  // the FIXTURE/preview source is exempt (no live ingestion → no suppress, no
+  // log). All-or-nothing: never a per-player drop.
+  const lagMetric = await repo.probeIngestionLag(serve_now);
+  const currency = decideIngestionCurrency(lagMetric, serve_now);
+  if (!currency.exempt) {
+    // eslint-disable-next-line no-console
+    console.info(buildIngestionServeLogLine(lagMetric, currency.ingestion_behind));
+  }
+  if (currency.ingestion_behind) {
+    // Suppress to the approved empty state — identical to the zero-row Board
+    // (page.tsx renders EMPTY_STATE_MESSAGE on rows.length === 0). No new copy.
+    return { method_version: ACTIVE_BOARD_METHOD_VERSION, projections: [], rows: [] };
+  }
 
   const candidates = await repo.queryRankedCandidates(ACTIVE_BOARD_METHOD_VERSION);
 
