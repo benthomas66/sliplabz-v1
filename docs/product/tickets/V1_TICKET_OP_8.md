@@ -63,9 +63,18 @@ The probe proved the payload is present and shaped correctly; it did NOT prove t
    this reuses the seed definition/selection unchanged.)
 
 ## Dependencies / sequencing
-- **V1-OP-5a (BDL box scores, leg 1)** is the parallel **0-credit prerequisite** for the
-  `hlr = leg2 ⋈ leg1` join — box scores must exist for a game before its hlr can compute. 5a and
-  V1-OP-8's leg-2 retrieval can run in parallel; leg-3 hlr lands once both are present.
+- **V1-OP-5a (BDL box scores, leg 1) — sequenced BEFORE OP-8 for the backlog** (`tickets/V1_TICKET_OP_5A.md`).
+  The dependency is **UPSTREAM for the backlog** (only **1 of 47** backlog games currently has box
+  scores; the other 46 cannot compute leg-3 hlr until 5a lands them) and **parallel for forward
+  games** (leg-2 retrieval and leg-1 finalization can run together per slate; leg-3 lands once both
+  are present). **Amendment (2026-08-01):** the STEP-0.B(2) real-persist validation target is now a
+  **representative mapped, box-score-complete backlog slate (post-5a)** — NOT the single unmapped
+  exception (`22302337`) that was the only qualifying game pre-5a.
+- **Shared `actual_start_utc` invariant (cross-ticket with V1-OP-5a):** neither ticket writes
+  `games.actual_start_utc`. OP-8's Gate 2 boundary-derivation lock requires it null so
+  `evaluateCloseBoundary` = `scheduled_with_grace`; 5a's finalization must not populate it either
+  (else the archive snapshots OP-8 promotes retroactively flip to `close_capture_stale`). Both
+  tickets carry the guard.
 - Backlog repair + recurring forward retrieval **sustain until** the uncovered tail rolls off past
   the recent-N window (GAP-28) and the V1-OP-4c gate lifts. The 2 pre-window permanent-hole games
   (GAP-30) are outside the recent-N window and need not be repaired to relight.
