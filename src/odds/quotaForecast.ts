@@ -6,6 +6,8 @@
 //   Odds sub-spec §13.6 (returned coverage does not determine cost)
 //   Odds sub-spec §13.8 (quota forecasting contract; header authoritative)
 //   Odds sub-spec §14.6, §14.7 (official quota formula)
+//   Odds sub-spec §14.11.2 (HISTORICAL quota: 10× region-equiv × markets × events;
+//     historical event discovery has its own non-zero documented cost — GAP-29)
 //   Odds sub-spec §21 (quota budgeting and safeguards)
 //   Ticket V1-3 hard invariant: quota forecast must reconcile against the
 //     response headers; divergence is recorded, never ignored.
@@ -55,6 +57,50 @@ export function forecastEventOddsCost(inputs: {
 export function forecastEventDiscoveryCost(): number {
   // §14.2: the events endpoint does not count against quota.
   return 0;
+}
+
+// ---------------------------------------------------------------------------
+// GAP-29 — HISTORICAL forecasts. `forecastEventOddsCost` / `forecastEventDiscoveryCost`
+// above forecast the CURRENT endpoints and are UNCHANGED (multiplier 1; discovery
+// free). The HISTORICAL endpoints bill differently and MUST use these variants so
+// the reserve-floor guard does not under-read historical spend ~22× (GAP-29).
+// ---------------------------------------------------------------------------
+
+/**
+ * §14.11.2: the official historical event-odds cost is
+ *   `10 × region-equivalents × markets × events`.
+ * The 10× multiplier scales with region-equivalents (same `ceil(books/10)`
+ * grouping as current), NOT the current formula. Spec-exact.
+ */
+export const HISTORICAL_ODDS_MULTIPLIER = 10;
+
+/**
+ * Forecast one HISTORICAL event-odds request (§14.11.2). Reuses the CURRENT base
+ * formula (single owner: `forecastEventOddsCost` = markets × region-equiv) and
+ * applies the 10× historical multiplier. For ≤10 conventional sportsbook keys and
+ * the 4 launch markets this is 10 × (4 × 1) = 40 credits/event (matches §14.11.2's
+ * worked figure). Header (`x-requests-last`) remains authoritative.
+ */
+export function forecastHistoricalEventOddsCost(inputs: {
+  readonly requested_market_count: number;
+  readonly requested_bookmaker_count: number;
+}): number {
+  return HISTORICAL_ODDS_MULTIPLIER * forecastEventOddsCost(inputs);
+}
+
+/**
+ * Historical event-DISCOVERY cost. §14.11.2 states historical event discovery
+ * "has its own documented cost and should be budgeted separately" — i.e. it is
+ * NON-ZERO, in contrast to the CURRENT `/events` endpoint which §14.2 makes free.
+ * The spec does NOT pin a specific number here; the observed cost is 1 credit/call
+ * (founder-held Odds API probe evidence, 2026-07-31). Held as a named constant so
+ * the value is explicit and auditable; the response header remains the source of
+ * truth and `reconcileQuota` records any divergence.
+ */
+export const HISTORICAL_EVENT_DISCOVERY_COST_CREDITS = 1;
+
+export function forecastHistoricalEventDiscoveryCost(): number {
+  return HISTORICAL_EVENT_DISCOVERY_COST_CREDITS;
 }
 
 export interface QuotaReconciliationInput {
