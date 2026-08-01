@@ -137,59 +137,56 @@ it (see the ticket's hard STEP 0.B gate: structural-shape + deterministic-conten
 parity vs the seed path — provenance stays honest `self_observed` per ticket STEP
 0.B(1), NOT `backfilled_historical` — and one real-slate end-to-end verification).
 
-**Consequence:** V1-OP-3's cadence floor is now the **REQUIRED enabling
-dependency** (a poll must land inside the 10-min pre-close window for a game to
-have anything eligible to promote), not a supporting nicety.
+### 4.2 STRUCTURALLY INERT — the FREE path is unreachable (GAP-30, 2026-07-31)
 
-## 5. V1-OP-3 — REFRAMED as a correctness enabler (under the FREE verdict)
+The §4.1 authority analysis above is **VALID and retained** — but it is
+**operationally INERT**. There is no forward `actual_start_utc` producer
+(`bdl/gameStatus.ts` maps status only; `actual_start_utc` is written only by the
+seed path), so `evaluateCloseBoundary` selects `scheduled_with_grace`
+(`scheduled+900`), and the 600s close-capture window `[scheduled+300, scheduled+900]`
+sits entirely **after** scheduled tip — while forward polling stops **by** scheduled
+tip. **No `self_observed` pre-tip snapshot can ever qualify; the missing element is
+an eligible forward snapshot, not authority.** Registered as **GAP-30**. V1-OP-3 is
+therefore **NOT** the enabler and is **removed from the critical path** — cadence
+tuning cannot close a window that opens 300s after polling stops. **V1-OP-6 FREE is
+SHELVED** (see the ticket's SHELVED block); the immediate relight is **Path C** (§6).
 
-V1-OP-3 was drafted as "widen the poll window 3h→8h for coverage," with the
-cadence floor as a **cost** control. Under §4.1 (FREE), the cadence floor's real
-job changes: it must **guarantee a `current_poll` snapshot lands inside the 10-min
-pre-close window** for every game — otherwise that game has nothing eligible to
-promote and never gets forward hlr. That is a **correctness requirement, not a
-budget one.**
+## 5. V1-OP-3 — DEMOTED (no longer the relight lever; GAP-30)
 
-Re-scope (binding constraint for the V1-OP-3 ticket):
-- The **near-tip cadence tier must be derived from the close-capture window
-  (§7.10.1, 600s), not from cost.** A floor that permits any gap longer than 10
-  minutes near tipoff leaves some games with no eligible pre-close snapshot.
-- The ticket must state **explicitly what near-tip cadence guarantees an eligible
-  snapshot for every game** (account for poll duration/jitter and the "stop
-  polling at scheduled tip" rule, Odds §19.1), and re-derive BOTH tiers with that
-  as the binding constraint (cost becomes the secondary ceiling, not the driver).
-- Sequenced AFTER V1-OP-6 (see §6): V1-OP-6 proves the mechanism and tells us the
-  exact cadence requirement to tune to.
+Under GAP-30 the FREE forward path is structurally blocked, so V1-OP-3's cadence
+floor **cannot** enable it — the close-capture window is post-tip regardless of
+cadence. **V1-OP-3 is removed from the relight critical path.** It retains only any
+INDEPENDENT current-market value (fresher `current_market_rows` for the D-A1 gate /
+profile freshness); it is no longer a relight dependency and is not sequenced here.
+The earlier "reframed as correctness enabler" framing is withdrawn.
 
-## 6. Consequence for the plan — corrected order
+## 6. Relight order — Path C (paid post-hoc historical retrieval)
 
-The "4c → 5a → look" sequence does **not** produce a working Board. Corrected:
+The FREE forward path is shelved (§4.2, GAP-30). The immediate relight is **Path C**
+— retrieve closing lines post-hoc from the Odds API historical archive, which is
+immune to the boundary/polling geometry (it queries the archive at the boundary
+after the fact, at the archive's own ~5-min cadence). Ordered and spend-gated:
 
 1. **V1-OP-4c** — coherence gate. DONE (`df58f05`).
-2. **V1-OP-6** — forward closing-line → hlr pipeline (legs 2+3), FREE per §4.1.
-   *The critical path.* Prove the mechanism FIRST (hard STEP 0.B gate:
-   structural-shape parity vs the seed path with provenance held honest at
-   `self_observed` + one real-slate end-to-end). It runs against EXISTING
-   snapshots — **but whether any existing snapshot qualifies is decided by a
-   zero-cost pre-dispatch feasibility preflight (ticket): if the current throttled
-   cadence (~1.5–2.7h vs the 600s window) has left NO game with an eligible
-   pre-close snapshot, STEP 0.B(2) cannot pass against existing data and a near-tip
-   poll (a scoped V1-OP-3 slice or one manual poll) must precede it.** Do not
-   assume existing snapshots suffice.
-3. **V1-OP-3** — cadence floor derived from the close-capture window (§5), to
-   guarantee eligibility for *every* game. AFTER V1-OP-6, because proving the
-   mechanism first tells us the exact cadence to tune to; tuning cadence before
-   the mechanism is proven risks wasted work if promotion fails on shape parity or
-   an unexercised-path defect. **Prove the mechanism, then tune the cadence that
-   feeds it.**
-4. **V1-OP-5a** — BDL box scores + finalization (leg 1). Runs **in PARALLEL** —
-   independent, zero credits, and box scores are a hard prerequisite for hlr
-   regardless of how closing lines arrive.
-5. Sustain forward coverage ~2–4 weeks until the unmapped tail rolls off (Phase 2).
+2. **GAP-29 fix** (separate code package, its own commit + review) — add the
+   §14.11.2 10× historical multiplier + a non-zero historical-discovery cost to
+   `quotaForecast`; **committed, reviewed, green BEFORE any historical credit.** It
+   is the spend guard.
+3. **Independently verify** the corrected forecast against the authoritative
+   `x-requests-remaining` header (`reconcileQuota`).
+4. **≤40-credit bounded prop-market coverage probe** — confirm the 4 WNBA
+   player-prop markets are actually present in the historical event-odds payload.
+5. **Cost package → founder authorization** — one-time backlog (~1,695 credits,
+   GAP-29 model) + recurring forward (~40 credits/event) — before any larger spend.
+6. **On authorization:** backlog repair **+ recurring forward post-hoc close
+   capture** via the historical endpoint (the sustaining forward producer, in place
+   of the shelved FREE promotion).
 
-V1-OP-5b (historical Odds API backfill of the in-window games — **~1,695 credits
-for ~42 games** (V1-OP-5b Odds API probe, 2026-07-31; supporting founder-held
-evidence, held untracked); the earlier ~76-credit
-/19-game figure is SUPERSEDED, see GAP-29) is optional acceleration behind a bounded
-~40-credit market-coverage probe and the GAP-29 forecast fix; NOT on the critical
-path.
+**V1-OP-5a** — BDL box scores + finalization (leg 1) — runs **in PARALLEL**:
+independent, zero credits, supplies the box scores Path C's `hlr = leg2 ⋈ leg1`
+requires. It **must not** lift Board suppression on its own before hlr coherence
+exists (GAP-26/28). Not on the GAP-29 critical path.
+
+V1-OP-5b (the in-window historical backfill — ~1,695 credits, GAP-29 model;
+supporting founder-held probe evidence held untracked, not a committed dependency)
+is the backlog-repair face of step 6 and stays behind steps 2–5.

@@ -8,8 +8,8 @@ Last updated: 2026-07-31 (V1-GOV-7). Supersedes V1-GOV-6, which predated the ent
 
 ## Current position
 
-- **HEAD (state recorded against):** `a450ffd` — "feat: mobile Research View comprehension pass — plain-language inspection surface (V1-8b)". This V1-GOV-7 refresh ships as the **next** commit (housekeeping), so immediately after it lands this line is one commit stale by design.
-- **Commits:** 57 at `a450ffd` (58 once the V1-GOV-7 housekeeping commit lands).
+- **HEAD (state recorded against):** `d831733` — "docs(product): incorporate V1-OP-6 audit and relight execution gates". This **V1-GOV-8** refresh ships as the **next** commit (housekeeping), so immediately after it lands this line is one commit stale by design.
+- **Intervening since `a450ffd` (the V1-OP operations line):** V1-OP-4 ingestion gate (`58114e4`) · V1-OP-4c re-anchor to engine coverage + recent-N bound (`df58f05`) · relight-path spec (`077f900`) · V1-OP-6 STEP 0.A FREE verdict (`a0da7c2`) · GAP-29 register (`d42f512`) · V1-OP-6 audit package (`d831733`).
 - **Remote:** origin (GitHub, private). Standing rule: **push after every approved commit.**
 - **Hosted DB:** 56 migrations applied. Producer certified in production (V1-OP-2). Each cycle persists evidence inputs, the deduplicated source-identity set, and the complete per-game threshold-relative series with canonical game identity. `poll_cycles` ledger active. `evidence_profiles`: 145 `evidence_method_v1` (frozen, audit-only) + pre-persistence `evidence_method_v2` rows typed `unavailable_not_persisted` **permanently** (no bundle; not a transitional state) + governed v2 profiles persisted each cycle.
 - **Deployed:** Vercel preview (not git-connected; `vercel` from repo root, never `--prod`). Routes: `/board` (production Board surface — empty between slates by design), `/design-preview` + variants `a`/`b` (legacy `BoardTable` + design variants — see GAP-24), `/design-preview/research` + `/design-preview/research/[idx]` (current Research View), `/research/[game]/[player]/[market]` (production Research View).
@@ -55,14 +55,24 @@ Grammar essentials: eight primitives (Finding Mark · Evidence Strip · Margin G
 
 **Board series COMPLETE and committed:** V1-8a0 (`49f0a81`) · V1-8a0b (`6f39f48`) · V1-8a0a (`a3c28f3`) · V1-8a1 (`e7b1a45`) · V1-8a2 (`77e460f`) · V1-8a3 (`66e51ac`). **Research View comprehension pass COMPLETE:** V1-8b (`a450ffd`).
 
-1. **V1-OP-3** — widen the pregame poll window (3h → 8h) **with a cadence floor** and a schema-first `poll_cycles.outcome` constraint widening (`skipped_cadence_floor`). Governor-authored clean ticket (paste channel corrupts). **NEXT to issue; HEAD pins to the V1-GOV-7 housekeeping commit.**
-2. **V1-9** — auth, Stripe, entitlement. The locked-row visual architecture is built and inert so this must not force a Board redesign.
-3. **V1-10** — launch audit.
-4. **Offseason empty-state** — product question (what a visitor sees for ~7 months with no slate). Needs an answer before ~October. Separate product ticket; must not expand V1-OP-3.
+**RELIGHT (the Board is honestly dark; V1-OP-4c gate suppresses on stale engine coverage — see `V1_RELIGHT_PATH.md`):**
+
+1. **GAP-29 fix** — quota-forecast correction (add §14.11.2 10× historical multiplier + non-zero historical-discovery cost to `src/odds/quotaForecast.ts`; reconcile vs `x-requests-remaining`). **THE IMMEDIATE NEXT CODE PACKAGE + the spend guard** — committed, reviewed, green before ANY historical Odds API credit. Separate scoped ticket, own commit + review.
+2. **Path C — paid post-hoc historical retrieval** = the immediate relight mechanism (behind the GAP-29 fix): fix → verify → ≤40-credit prop-market probe → cost package (one-time ~1,695 + recurring ~40/event, GAP-29 model) → founder authorization → backlog repair + recurring forward post-hoc close capture.
+3. **V1-OP-6 (FREE forward promotion) — SHELVED** (GAP-30): structurally blocked — no forward `actual_start_utc` producer, so the `scheduled+900` grace boundary's 600s window is post-tip while polling stops at tip; no eligible forward snapshot can exist. Authority/shape verdict stays valid-but-inert. Shelved pending a future actual-start/trigger ticket.
+4. **V1-OP-3 — DEMOTED** (GAP-30): no longer the relight lever (cadence cannot close a post-tip window); retains only any independent current-market freshness value. Not sequenced for relight.
+5. **V1-OP-5a — parallel 0-credit box-score lane** (leg 1): supplies box scores Path C's `hlr = leg2 ⋈ leg1` needs; **must not lift Board suppression before hlr coherence** (GAP-26/28). Own ticket/review; not on the GAP-29 critical path.
+
+**Odds API balance ~32,908 credits (2026-07-31);** `RESERVE_FLOOR_CREDITS=1000`. Path C spend is entirely behind the GAP-29 fix + the cost package + founder authorization.
+
+**Post-relight:**
+6. **V1-9** — auth, Stripe, entitlement. The locked-row visual architecture is built and inert so this must not force a Board redesign.
+7. **V1-10** — launch audit.
+8. **Offseason empty-state** — product question (what a visitor sees for ~7 months with no slate). Needs an answer before ~October. Separate product ticket.
 
 Deferred with their own registrations: **V1-ARCH-2** (unified classified evaluation object — not a prerequisite, not opportunistic) · **V1-OPS-3** (poll failure/skip signaling — OPEN) · G1 filtered windows · G2 H2H window · G3 supporting-stats inventory · G4 line-movement projection.
 
-**Open gaps register (`V1_OPEN_GAPS.md`):** recent — GAP-23 (internal game id in Research route, non-blocking) · GAP-24 (no preview route for the current Board surface, non-blocking) · GAP-25 (ingestion gate fail-safe suppression indistinguishable from real lag, non-blocking, → V1-OP-4b) · V1-7d **CLOSED by V1-8b**. See the register for the full list.
+**Open gaps register (`V1_OPEN_GAPS.md`):** recent — GAP-25 (ingestion gate fail-safe log ambiguity, → V1-OP-4b) · **GAP-26 CLOSED by V1-OP-4c** (gate/engine anchor mismatch) · GAP-27 (season/L20 reach past recent-N bound, non-blocking) · GAP-28 (gate cannot relight from backfill alone; relight via Path C) · GAP-29 (quotaForecast under-reads historical cost ~22× — the spend guard; blocks any historical run until fixed) · **GAP-30** (forward self-observed close capture unreachable under scheduled-with-grace geometry → V1-OP-6 shelved; blocks FREE forward promotion, not launch if Path C succeeds). See the register for the full list.
 
 ---
 

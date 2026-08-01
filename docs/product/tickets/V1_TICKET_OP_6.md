@@ -1,6 +1,29 @@
-# V1-OP-6 — Forward closing-line → historical_line_results pipeline (legs 2+3; the relight critical path)
+# V1-OP-6 — Forward closing-line → hlr pipeline (FREE promotion) — SHELVED (structurally blocked; see GAP-30)
 
-**Historical baseline (reference only — NOT the execution pin):** `df58f05` (V1-OP-4c).
+> ## ⛔ SHELVED — 2026-07-31 (founder ruling)
+>
+> - **Authority analysis: VALID and retained.** The STEP 0.A FREE verdict
+>   (provenance / current-directional isolation / shape parity) stands and is NOT
+>   withdrawn. See §4.1 of `V1_RELIGHT_PATH.md`.
+> - **The FREE provenance/shape path is technically sanctioned in principle** —
+>   promoting the last pre-tip `current_poll` (`self_observed`) snapshot into a
+>   closing quote is authority-permitted.
+> - **Operational execution is structurally blocked** under the current
+>   boundary + polling invariants: with no forward `actual_start_utc` producer the
+>   close boundary is `scheduled_with_grace` (`scheduled+900`), so the 600s
+>   close-capture window is `[scheduled+300, scheduled+900]` — entirely AFTER
+>   scheduled tip, while forward polling stops by scheduled tip. No eligible
+>   forward snapshot can exist. **The missing element is an eligible forward
+>   snapshot, not authority.** Recorded as **GAP-30**.
+> - **NOT DISPATCHABLE.** The prepared V1-OP-6 dispatch envelope is **VOID** (never
+>   issued). No implementation agent is to be dispatched against this ticket. The
+>   HEAD/baseline framing below is retained for provenance only and is INERT.
+> - **Shelved** pending a future actual-start / near-tip-trigger architecture
+>   (a separate, unassigned ticket).
+> - **Superseded as the immediate relight mechanism** by the paid historical path
+>   (Path C — post-hoc archive retrieval), gated by the GAP-29 forecast fix.
+
+**Historical baseline (reference only — NOT the execution pin; INERT while shelved):** `df58f05` (V1-OP-4c).
 **Execution HEAD:** supplied EXCLUSIVELY by the post-governance-commit dispatch
 envelope. That envelope's HEAD controls the pre-dispatch feasibility preflight and
 SUPERSEDES the historical baseline above; the implementation agent must never treat
@@ -27,7 +50,15 @@ writer. There is NO automatic forward producer for the engine's coverage table �
 so profiles are built on hlr frozen at the 07-12 seed boundary. Restoring box
 scores (5a) does not fix this. This is the relight critical path.
 
-## Pre-dispatch feasibility preflight (read-only; run BEFORE implementation is dispatched)
+## Pre-dispatch feasibility preflight — HISTORICAL ANALYSIS ONLY (NOT a live dispatch gate)
+> **SHELVED-ticket note:** this section is retained as historical analysis. It is
+> **NOT a live dispatch gate** and **no agent is to be dispatched against it.**
+> It also **cannot discriminate structurally-impossible from merely under-cadenced**:
+> it measures `scheduled_with_grace` games, whose 600s window is post-tip by
+> construction (GAP-30), so a "0 qualifying" result is the *structural* block, not a
+> cadence miss a tighter V1-OP-3 could close. Kept only to document how the block
+> was found.
+
 STEP 0.B(2) proves promotion on a real slate against EXISTING snapshots. Whether any
 existing snapshot even qualifies is not assumed — it is decided first, at zero cost.
 Before dispatching implementation, run one read-only query: across recent past-tip
