@@ -87,8 +87,9 @@ Odds API spend**, depending on one authority question:
   and historical snapshots cannot mix." If the closing-quote lineage is defined
   as historical-provenance-exclusive, a `self_observed` poll snapshot may NOT be
   promoted — and legs 2+3 genuinely require the Odds API historical endpoint
-  (~4 credits/game/slate). **If so, that is a real methodology constraint to be
-  quoted, not a cost preference.**
+  (**~40 credits/event** per §14.11.2's 10× historical multiplier — the ~4/game
+  figure was the current-odds formula, SUPERSEDED; see GAP-29). **If so, that is a
+  real methodology constraint to be quoted, not a cost preference.**
 
 ### 4.1 RESOLVED — FREE (V1-OP-6 STEP 0.A verdict, governor-verified 2026-07-31)
 
@@ -111,11 +112,17 @@ Verified against the authority (each quote read directly):
   structurally excluded." It protects *current* computations FROM historical
   contamination; it says nothing barring a self_observed snapshot from BEING a
   closing quote.
-- **The closing-quote tables carry NO provenance CHECK.** `source_closing_quotes`
-  (migration `20260711140005`) constrains only the `close_capture_state` pairing;
-  `canonical_closing_points` (`20260711140006`) only `selection_method`. No schema
-  barrier to a self_observed `source_snapshot_id`. §7.10.2 selection is
-  provenance-agnostic (provenance is stored, not gated).
+- **The closing-quote tables carry NO provenance CHECK, and leg 3 explicitly
+  PERMITS the promoted value.** `source_closing_quotes` (migration `20260711140005`)
+  constrains only the `close_capture_state` pairing; `canonical_closing_points`
+  (`20260711140006`) only `selection_method`. No schema barrier to a self_observed
+  `source_snapshot_id`. §7.10.2 selection is provenance-agnostic (provenance is
+  stored, not gated). And **`historical_line_results`** — leg 3, the table the
+  evidence engine reads — is the one contested table: migration `20260711140007`
+  originally shipped `CHECK (provenance='self_observed')`, and `20260711150000`
+  widened it to `CHECK (provenance IN ('self_observed','backfilled_historical'))`
+  with `self_observed` as the column DEFAULT. So it not only allows but defaults to
+  the promoted provenance.
 - **Not a method change (DR-24 not implicated).** Promotion changes the
   *population source* of an input observation, not the closing-quote definition
   (§7.10.1), the canonical selection (§7.10.2), or any `evidence_method_v1`
@@ -126,8 +133,9 @@ but genuinely **NEW lineage** — no `self_observed` market snapshot has ever fl
 into a `canonical_closing_point` (the `recomputationWriter` "precedent" is
 decorative: it hardcodes `self_observed` on hlr while reading historically-sourced
 canonical points). Therefore V1-OP-6 must **prove** the promoted path, not assume
-it (see the ticket's hard STEP 0.B gate: byte-identical canonical + hlr shapes vs
-the seed path, and one real-slate end-to-end verification).
+it (see the ticket's hard STEP 0.B gate: structural-shape + deterministic-content
+parity vs the seed path — provenance stays honest `self_observed` per ticket STEP
+0.B(1), NOT `backfilled_historical` — and one real-slate end-to-end verification).
 
 **Consequence:** V1-OP-3's cadence floor is now the **REQUIRED enabling
 dependency** (a poll must land inside the 10-min pre-close window for a game to
@@ -160,10 +168,14 @@ The "4c → 5a → look" sequence does **not** produce a working Board. Correcte
 1. **V1-OP-4c** — coherence gate. DONE (`df58f05`).
 2. **V1-OP-6** — forward closing-line → hlr pipeline (legs 2+3), FREE per §4.1.
    *The critical path.* Prove the mechanism FIRST (hard STEP 0.B gate:
-   byte-identical canonical/hlr shapes vs the seed path + one real-slate
-   end-to-end). It runs against EXISTING snapshots — under the current 3h window
-   some games may already have eligible pre-close observations, enough to prove
-   promotion out.
+   structural-shape parity vs the seed path with provenance held honest at
+   `self_observed` + one real-slate end-to-end). It runs against EXISTING
+   snapshots — **but whether any existing snapshot qualifies is decided by a
+   zero-cost pre-dispatch feasibility preflight (ticket): if the current throttled
+   cadence (~1.5–2.7h vs the 600s window) has left NO game with an eligible
+   pre-close snapshot, STEP 0.B(2) cannot pass against existing data and a near-tip
+   poll (a scoped V1-OP-3 slice or one manual poll) must precede it.** Do not
+   assume existing snapshots suffice.
 3. **V1-OP-3** — cadence floor derived from the close-capture window (§5), to
    guarantee eligibility for *every* game. AFTER V1-OP-6, because proving the
    mechanism first tells us the exact cadence to tune to; tuning cadence before
@@ -175,5 +187,9 @@ The "4c → 5a → look" sequence does **not** produce a working Board. Correcte
    regardless of how closing lines arrive.
 5. Sustain forward coverage ~2–4 weeks until the unmapped tail rolls off (Phase 2).
 
-V1-OP-5b (historical Odds API backfill of the 19 mapped in-window games) is
-optional acceleration behind the ~4-credit probe; NOT on the critical path.
+V1-OP-5b (historical Odds API backfill of the in-window games — **~1,695 credits
+for ~42 games** (V1-OP-5b Odds API probe, 2026-07-31; supporting founder-held
+evidence, held untracked); the earlier ~76-credit
+/19-game figure is SUPERSEDED, see GAP-29) is optional acceleration behind a bounded
+~40-credit market-coverage probe and the GAP-29 forecast fix; NOT on the critical
+path.
