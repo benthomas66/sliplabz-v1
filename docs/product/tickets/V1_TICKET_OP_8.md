@@ -42,14 +42,16 @@ The probe proved the payload is present and shaped correctly; it did NOT prove t
    coverage impact (a name that doesn't resolve yields no hlr for that grain). Report the
    resolution rate. The probe confirmed names are PRESENT, not that they RESOLVE.
 
-2. **Boundary-derivation lock (Qualification 2).** Compute the close boundary SOLELY via the
-   committed `evaluateCloseBoundary` from `games.actual_start_utc` (null → `scheduled+900`). The
-   retrieval **MUST NOT** populate `actual_start_utc` (e.g. from Odds `commence_time`) or otherwise
-   shift the boundary — doing so retroactively flips eligible snapshots to `close_capture_stale`
+2. **Boundary-derivation lock (Qualification 2) — WIDENED (2026-08-01).** Compute the close boundary
+   SOLELY via the committed `evaluateCloseBoundary` (which depends on EITHER `games.actual_start_utc`
+   → `verified_actual_start`, OR `scheduled_start_utc + 900` → `scheduled_with_grace`). **The retrieval
+   writes NEITHER `actual_start_utc` NOR `scheduled_start_utc`, and synthesizes NO timestamp from a
+   date-only provider field** (e.g. Odds `commence_time` or BDL's date-only `date` — GAP-31). Moving
+   either field shifts the boundary and retroactively flips eligible snapshots to `close_capture_stale`
    (verified in the probe: the archive's actual commence was 19:07, but the governed boundary is
    `scheduled+900`=19:15; a 19:07-derived boundary would make the eligible 19:10:37 snapshot stale).
-   Add a guarding invariant/test: the retrieval writes no `actual_start_utc` and derives the boundary
-   only from the committed primitive.
+   **Guard test asserts BOTH start-time fields are byte-identical** for every touched game and that the
+   boundary derives only from the committed primitive.
 
 3. **Canonical/hlr shape-parity proof (deferred STEP-0.B).** On ONE real slate, prove the produced
    `canonical_closing_point` + `historical_line_results` rows are byte-identical in shape to the
@@ -70,10 +72,12 @@ The probe proved the payload is present and shaped correctly; it did NOT prove t
   are present). **Amendment (2026-08-01):** the STEP-0.B(2) real-persist validation target is now a
   **representative mapped, box-score-complete backlog slate (post-5a)** — NOT the single unmapped
   exception (`22302337`) that was the only qualifying game pre-5a.
-- **Shared `actual_start_utc` invariant (cross-ticket with V1-OP-5a):** neither ticket writes
-  `games.actual_start_utc`. OP-8's Gate 2 boundary-derivation lock requires it null so
-  `evaluateCloseBoundary` = `scheduled_with_grace`; 5a's finalization must not populate it either
-  (else the archive snapshots OP-8 promotes retroactively flip to `close_capture_stale`). Both
+- **Shared WIDENED two-field boundary invariant (cross-ticket with V1-OP-5a / 5c / 5D; GAP-31):**
+  Neither `actual_start_utc` nor `scheduled_start_utc` may be written, refreshed, synthesized, or
+  altered by V1-OP-5a, V1-OP-5c, V1-OP-5D, or V1-OP-8 for games whose close-boundary-dependent
+  evidence is being preserved or promoted, absent a separately authorized boundary migration proving
+  downstream validity. `evaluateCloseBoundary` depends on either field; moving either can flip an
+  eligible archived snapshot to `close_capture_stale` (the legacy `v1_4e_step2` is PROHIBITED, GAP-31). Both
   tickets carry the guard.
 - Backlog repair + recurring forward retrieval **sustain until** the uncovered tail rolls off past
   the recent-N window (GAP-28) and the V1-OP-4c gate lifts. The 2 pre-window permanent-hole games
