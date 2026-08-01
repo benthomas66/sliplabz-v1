@@ -2,7 +2,7 @@
 
 Maintained by the governor chat. Updated whenever state materially changes. Any chat or successor governor reads THIS FILE plus `V1_OPEN_GAPS.md` before assuming anything about project state. **If this file and a chat summary disagree, this file wins.**
 
-Last updated: 2026-07-31 (V1-GOV-7). Supersedes V1-GOV-6, which predated the entire V1-8a Board series and the V1-8b Research View comprehension pass.
+Last updated: 2026-07-31 (V1-GOV-8). Supersedes V1-GOV-7, which predated the V1-OP operations line (V1-OP-4 / V1-OP-4c), the relight-path spec, and the V1-OP-6 shelving / Path C ruling.
 
 ---
 

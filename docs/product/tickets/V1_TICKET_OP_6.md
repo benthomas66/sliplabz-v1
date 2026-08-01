@@ -48,7 +48,7 @@ only. `canonical_closing_points` are written ONLY by the historical Odds API see
 path; `historical_line_results` only by the operator populator / correction
 writer. There is NO automatic forward producer for the engine's coverage table —
 so profiles are built on hlr frozen at the 07-12 seed boundary. Restoring box
-scores (5a) does not fix this. This is the relight critical path.
+scores (5a) does not fix this. ~~This is the relight critical path.~~ **SUPERSEDED — see the SHELVED block at the top of this ticket and GAP-30: V1-OP-6 (FREE forward promotion) is no longer the relight path; the FREE mechanism is structurally blocked and the immediate relight is Path C (paid post-hoc historical retrieval).**
 
 ## Pre-dispatch feasibility preflight — HISTORICAL ANALYSIS ONLY (NOT a live dispatch gate)
 > **SHELVED-ticket note:** this section is retained as historical analysis. It is
