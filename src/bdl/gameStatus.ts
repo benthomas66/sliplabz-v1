@@ -18,6 +18,8 @@ import type { GameStatusMappingResult } from './types.js';
  *   - "InProgress" / "Live"       → live
  *   - "Postponed"                 → postponed
  *   - "Canceled" / "Cancelled"    → canceled
+ *   - "post" (WNBA short form)    → final       (GAP-33)
+ *   - "pre"  (WNBA short form)    → scheduled    (GAP-33)
  *
  * The provider clock format may attach to non-terminal games as a trailing
  * time; e.g. "  4:35 4Q " strings appear as `time` but are never independent
@@ -36,6 +38,15 @@ const STATUS_MAP: ReadonlyMap<string, GameStatus> = new Map([
   ['postponed', 'postponed'],
   ['canceled', 'canceled'],
   ['cancelled', 'canceled'],
+  // GAP-33 (2026-08-01): the live BDL WNBA `/games` feed emits the short forms
+  // `post` (played through → final) and `pre` (pregame → scheduled). These are
+  // EXACT known tokens, added to the vocabulary; the same script-local mapping
+  // (`scripts/v1_4b_identity_backfill.ts::bdlStatusToInternal`) originally
+  // populated `games`. This is provider-vocabulary coverage only — no inference
+  // from clock/period/score/digits/prefix/substring is added, and every other
+  // unknown token continues to quarantine.
+  ['post', 'final'],
+  ['pre', 'scheduled'],
 ]);
 
 /**
