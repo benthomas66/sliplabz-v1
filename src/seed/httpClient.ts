@@ -23,6 +23,29 @@ import { buildOddsapiUrl, oddsapiRequest } from '../odds/httpClient.js';
 
 const SPORT_KEY = 'basketball_wnba';
 
+/**
+ * The Odds API historical endpoints require SECOND-precision ISO-8601 for the
+ * `date` query parameter. A millisecond-precision value (e.g. the
+ * `.toISOString()` output of `evaluateCloseBoundary`, `2026-07-17T23:45:00.000Z`)
+ * is rejected with HTTP 422 — observed live on 2026-08-02 during the V1-OP-8
+ * one-game validation, against the format the original seed proved working
+ * (`2026-07-12T23:00:00Z`).
+ *
+ * Normalization lives HERE, at the sole HTTP owner of the historical
+ * endpoints, so it is IMPOSSIBLE BY CONSTRUCTION for any current or future
+ * caller (bulk repair, recurring forward retrieval) to put sub-second
+ * precision on the wire. It strips only the fractional-seconds group and
+ * touches nothing else, so it is exactly idempotent on values that are
+ * already second-precision — every existing caller serializes byte-identical.
+ *
+ * NOTE: this changes only the WIRE SERIALIZATION. The caller's stored/derived
+ * boundary value (`close_boundary_utc`) is never mutated, so the close-boundary
+ * semantics and the widened two-field invariant are unaffected.
+ */
+export function toHistoricalDateParam(at_timestamp: string): string {
+  return at_timestamp.replace(/(\d{2}:\d{2}:\d{2})\.\d+/, '$1');
+}
+
 export interface HistoricalEventsRequest {
   readonly api_key: string;
   /** ISO-8601 timestamp — the historical snapshot boundary. */
@@ -46,7 +69,7 @@ export function buildHistoricalEventsUrl(
   input: HistoricalEventsRequest
 ): string {
   const query: Record<string, string | number | ReadonlyArray<string>> = {
-    date: input.at_timestamp,
+    date: toHistoricalDateParam(input.at_timestamp),
   };
   if (input.commence_time_from !== undefined) {
     query['commenceTimeFrom'] = input.commence_time_from;
@@ -66,7 +89,7 @@ export function buildHistoricalEventOddsUrl(
   input: HistoricalEventOddsRequest
 ): string {
   const query: Record<string, string | number | ReadonlyArray<string>> = {
-    date: input.at_timestamp,
+    date: toHistoricalDateParam(input.at_timestamp),
     markets: input.market_keys,
     bookmakers: input.bookmaker_keys,
     oddsFormat: input.odds_format ?? 'american',
@@ -100,7 +123,7 @@ function buildEventsQuery(
   input: HistoricalEventsRequest
 ): Readonly<Record<string, string | number | ReadonlyArray<string>>> {
   const q: Record<string, string | number | ReadonlyArray<string>> = {
-    date: input.at_timestamp,
+    date: toHistoricalDateParam(input.at_timestamp),
   };
   if (input.commence_time_from !== undefined)
     q['commenceTimeFrom'] = input.commence_time_from;
@@ -119,7 +142,7 @@ export function fetchHistoricalEventOdds(
   return oddsapiRequest(cfg, {
     path: `/v4/historical/sports/${SPORT_KEY}/events/${input.provider_event_id}/odds`,
     query: {
-      date: input.at_timestamp,
+      date: toHistoricalDateParam(input.at_timestamp),
       markets: input.market_keys,
       bookmakers: input.bookmaker_keys,
       oddsFormat: input.odds_format ?? 'american',

@@ -32,6 +32,7 @@
 //     --at 2026-07-17T23:15:00Z --ceiling 60
 
 import { readFileSync } from 'node:fs';
+import { randomUUID } from 'node:crypto';
 import pg from 'pg';
 
 import {
@@ -40,6 +41,9 @@ import {
   type ScopedRetrievalRequest,
 } from '../src/lines/scopedHistoricalRetrieval.js';
 import { processHistoricalSnapshot } from '../src/seed/historicalEventOdds.js';
+import { buildScopedRetrievalDeps } from '../src/lines/scopedHistoricalRetrievalDeps.js';
+import { buildLiveOddsapiConfig } from '../src/lines/liveInvokeGate.js';
+import { openPool } from '../src/db/connection.js';
 import { evaluateCloseBoundary } from '../src/lines/closeBoundary.js';
 import { LAUNCH_MARKET_KEYS } from '../src/odds/marketKeys.js';
 import { V1_BOOKMAKER_ALLOWLIST } from '../src/odds/bookmakerAllowlist.js';
@@ -105,46 +109,94 @@ const deps: ScopedRetrievalDeps = {
     return (raw.response_body ?? raw) as HistoricalEventOddsResponse;
   },
 
-  // PAID. Unreachable on a dry-run; additionally gated on live-invoke.
+  // DRY-RUN path keeps every effectful seam unreachable. The real seams are
+  // built ONLY on --apply (see buildApplyDeps) so a dry-run can never fetch or
+  // persist even by mistake.
   fetchSnapshot: async () => {
-    throw new Error(
-      '# V1-OP-8a: the paid historical fetch is NOT authorized by this ticket. ' +
-        'Wire fetchHistoricalEventOdds here only under the separate founder-authorized one-game validation.',
-    );
+    throw new Error('# V1-OP-8: the paid fetch is not reachable on a dry-run.');
   },
-
   processSnapshot: (input) => processHistoricalSnapshot(input as never) as never,
-
   persistTriple: async () => {
-    throw new Error('# V1-OP-8a: persistence is NOT authorized by this ticket (dry-run only).');
+    throw new Error('# V1-OP-8: persistence is not reachable on a dry-run.');
   },
   runCanonicalForGame: async () => {
-    throw new Error('# V1-OP-8a: canonical persistence is NOT authorized by this ticket (dry-run only).');
+    throw new Error('# V1-OP-8: canonical persistence is not reachable on a dry-run.');
   },
   runHlrForGame: async () => {
-    throw new Error('# V1-OP-8a: hlr persistence is NOT authorized by this ticket (dry-run only).');
+    throw new Error('# V1-OP-8: hlr persistence is not reachable on a dry-run.');
   },
 };
 
+/**
+ * V1-OP-8 PART 2 guard-lift. Builds the REAL seams from the committed wiring
+ * (`src/lines/scopedHistoricalRetrievalDeps.ts`, `ae2e159`). Reached ONLY on
+ * --apply, and only with ODDSAPI_LIVE_INVOKE=1. Nothing else about the bounded
+ * contract changes: still one explicit game + event, the owner's gates still
+ * run before the paid call, forbidden tables stay unreachable, neither
+ * start-time field is written, attribution stays ownership-scoped, and the
+ * wiring performs no blind retry.
+ */
+async function buildApplyDeps(): Promise<ScopedRetrievalDeps> {
+  const db_url: string = DB_URL as string; // env-gated non-empty at module load
+  const api_key = process.env['ODDS_API_KEY'];
+  if (api_key === undefined || api_key === '') throw new Error('# V1-OP-8: ODDS_API_KEY required for --apply.');
+  // Refuses unless ODDSAPI_LIVE_INVOKE=1 (committed live-invoke gate).
+  const oddsapi_config = buildLiveOddsapiConfig({ allow_live_invoke: true });
+  const sliplabzPool = openPool({ connectionString: db_url, max: 2, statement_timeout_ms: 30_000, ssl: 'require' });
+  // Player identity map for persistHistoricalSnapshot (read-only).
+  const pr = await sliplabzPool.query('SELECT internal_player_id::text AS id, normalized_name FROM players');
+  const players = new Map<string, string>();
+  for (const row of pr.rows as Array<{ id: string; normalized_name: string }>) {
+    if (row.normalized_name !== '') players.set(row.normalized_name, row.id);
+  }
+  return buildScopedRetrievalDeps(
+    {
+      pool: sliplabzPool,
+      connection_string: db_url,
+      oddsapi_config,
+      api_key,
+      seed_run_id: randomUUID(),
+      player_ids_by_normalized_name: players,
+    },
+    { processSnapshot: deps.processSnapshot, loadFixtureSnapshot: deps.loadFixtureSnapshot },
+  );
+}
+
 async function main(): Promise<void> {
   try {
-    if (CLI.apply) {
-      console.error('# V1-OP-8a: --apply is NOT authorized by this ticket. Dry-run only. Aborting before any provider call or write.');
+    // GUARD-LIFT (V1-OP-8 PART 2): --apply is permitted, but ONLY with an
+    // explicit live-invoke opt-in. Without it we refuse before any provider call.
+    if (CLI.apply && process.env['ODDSAPI_LIVE_INVOKE'] !== '1') {
+      console.error('# V1-OP-8: --apply requires ODDSAPI_LIVE_INVOKE=1. Aborting before any provider call or write.');
       process.exitCode = 2;
       return;
+    }
+    const activeDeps = CLI.apply ? await buildApplyDeps() : deps;
+
+    // The snapshot timestamp is DERIVED from the committed evaluateCloseBoundary
+    // over stored fields — never the hand-typed --at. A supplied --at is only
+    // cross-checked and reported; it is not used as the request value.
+    const derived = await activeDeps.readCloseBoundary(CLI.game ?? '');
+    if (CLI.game !== null && derived.close_boundary_utc === null) {
+      console.error('# V1-OP-8: no close boundary for the target game. Aborting before any provider call.');
+      process.exitCode = 3;
+      return;
+    }
+    if (CLI.at !== null && derived.close_boundary_utc !== null && new Date(CLI.at).getTime() !== new Date(derived.close_boundary_utc).getTime()) {
+      console.log(`# NOTE: supplied --at ${CLI.at} IGNORED; using derived boundary ${derived.close_boundary_utc}`);
     }
     const req: ScopedRetrievalRequest = {
       internal_game_id: CLI.game ?? '',
       provider_event_id: CLI.event ?? '',
-      at_timestamp: CLI.at ?? '',
+      at_timestamp: derived.close_boundary_utc ?? '',
       market_keys: [...LAUNCH_MARKET_KEYS],
       bookmaker_keys: BOOKS,
       max_credit_ceiling: Number.isFinite(CLI.ceiling) ? CLI.ceiling : 0,
       requires_discovery: false,
     };
-    const report = await executeScopedRetrieval(deps, req, { dry_run: true });
+    const report = await executeScopedRetrieval(activeDeps, req, { dry_run: !CLI.apply });
 
-    console.log('# V1-OP-8a DRY-RUN (zero credits, zero writes)');
+    console.log(CLI.apply ? '# V1-OP-8 APPLY (one paid event; persists for the target game only)' : '# V1-OP-8a DRY-RUN (zero credits, zero writes)');
     console.log(`# target game      : ${report.plan.internal_game_id || '(none)'}`);
     console.log(`# provider event   : ${report.plan.provider_event_id || '(none)'}`);
     console.log(`# requested markets: ${report.plan.market_keys.join(', ') || '(none)'}`);
