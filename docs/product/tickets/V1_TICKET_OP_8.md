@@ -70,6 +70,10 @@ The probe proved the payload is present and shaped correctly; it did NOT prove t
 
 STEP-0 re-confirmation (2026-08-02, code-verified) found that **no committed driver can execute a bounded one-game retrieval + persistence**: `scripts/v1_4b_stage2_phase_b_seed.ts` has zero CLI args and scans a discovery cache that does not cover the restored cohort's dates, and `scripts/v1_4c_phase_b_populate.ts` has no game selector and would populate globally-eligible hlr grains beyond the target. Issuing a paid request before the scoped caller exists would retrieve data with **no authorized bounded persistence path**. The per-event primitives themselves are sound — the missing object is orchestration. See **GAP-36** and **`tickets/V1_TICKET_OP_8A.md`**.
 
+**Update (2026-08-02, `54c346d`):** V1-OP-8a's bounded owner has **landed and is dry-run-verified** (GAP-36 → resolved-pending-validation). Its paid fetch and persist seams remain **stubbed-to-throw**, so the one-game paid validation is still a separate founder authorization.
+
+**⛔ SECOND GATE — the BROADER Path C repair is additionally gated on a GAP-37 ruling.** Beyond a successful one-game validation, the bulk repair requires a deliberate decision on **game-level transactionality**: `persistHistoricalSnapshot` is atomic **per (event, market, bookmaker) triple**, not per game, and canonical/hlr fire only after all of a game's triples complete. A mid-game failure leaves partial `source_closing_quotes` with no canonical point and no hlr — safe-by-incompleteness and resumable, and acceptable for one game, but across the **47 backlog + 113 forward** games it becomes an operational concern (resume bookkeeping, repeated spend on partially-persisted events). **Rule on whether a game-level transaction wraps retrieve→canonical→hlr BEFORE authorizing the bulk repair.** See GAP-37.
+
 This gate does **not** otherwise rescope V1-OP-8; the goal, reuse constraints, spend discipline, and STEP-0 gates below are unchanged.
 
 ## Dependencies / sequencing
