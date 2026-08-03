@@ -150,6 +150,21 @@ export interface BackfillOptions {
    */
   readonly only_market?: string;
   /**
+   * V1-OP-8a (GAP-36). Restrict the run to an EXPLICIT set of internal game
+   * ids. This is a SCOPE NARROWING ONLY: it appends one conjunct to the batch
+   * query alongside the existing `cursor` / `only_market` narrowings and does
+   * NOT alter `HISTORICAL_LINE_RESULTS_BACKFILL_ELIGIBILITY_SQL`, the grain
+   * definition, the stat extraction, or the UPSERT — a grain processed under
+   * this restriction produces byte-identical output to the same grain in an
+   * unrestricted run. Mirrors the sibling canonical owner's committed
+   * `restrict_to_internal_game_ids` parameter
+   * (`seed/orchestrator/canonicalClosingPointsForSeed.ts`).
+   *
+   * Omit (or pass null) for the historical global behavior. Like
+   * `only_market`, this is NOT authorized to widen scope.
+   */
+  readonly restrict_to_internal_game_ids?: ReadonlyArray<string> | null;
+  /**
    * Callback invoked after each successful batch commit with cumulative
    * counters. Operator script uses it for progress logging.
    */
@@ -234,7 +249,8 @@ async function fetchBatch(
   c: pg.Client,
   cursor: { game: string; player: string; market: string } | null,
   batch_size: number,
-  only_market: string | null
+  only_market: string | null,
+  restrict_to_internal_game_ids: ReadonlyArray<string> | null = null
 ): Promise<GrainRow[]> {
   // The eligibility SQL is embedded here to keep the batch query in one
   // place; the exported constant above is the same string, quoted so the
@@ -253,6 +269,13 @@ async function fetchBatch(
   if (only_market !== null) {
     conds.push(`ccp.market_key = $${params.length + 1}::text`);
     params.push(only_market);
+  }
+  // V1-OP-8a (GAP-36): explicit game-ownership narrowing. Same conjunct
+  // pattern as `cursor` / `only_market`; the eligibility predicate above is
+  // untouched, so per-grain output is unchanged.
+  if (restrict_to_internal_game_ids !== null && restrict_to_internal_game_ids.length > 0) {
+    conds.push(`ccp.internal_game_id = ANY($${params.length + 1}::uuid[])`);
+    params.push([...restrict_to_internal_game_ids]);
   }
   const sql = `
     SELECT ccp.canonical_closing_point_id::text  AS ccp_id,
@@ -375,7 +398,8 @@ async function runOneBatch(
   cursor: { game: string; player: string; market: string } | null,
   batch_size: number,
   only_market: string | null,
-  dry_run: boolean
+  dry_run: boolean,
+  restrict_to_internal_game_ids: ReadonlyArray<string> | null = null
 ): Promise<{
   local: {
     grains_observed: number;
@@ -386,7 +410,7 @@ async function runOneBatch(
   };
   last_cursor: { game: string; player: string; market: string } | null;
 }> {
-  const rows = await fetchBatch(c, cursor, batch_size, only_market);
+  const rows = await fetchBatch(c, cursor, batch_size, only_market, restrict_to_internal_game_ids);
   if (rows.length === 0) {
     return {
       local: {
@@ -449,6 +473,7 @@ export async function runHistoricalLineResultsBackfill(
 ): Promise<BackfillCounters> {
   const batch_size = options.batch_size ?? DEFAULT_BATCH_SIZE;
   const only_market = options.only_market ?? null;
+  const restrict_to_internal_game_ids = options.restrict_to_internal_game_ids ?? null;
   const dry_run = options.dry_run ?? false;
 
   const run_id = randomUUID();
@@ -475,7 +500,7 @@ export async function runHistoricalLineResultsBackfill(
     const before = { ...cumulative };
     const { result, retried } = await withFreshClientRetry(
       options.connection_string,
-      (c) => runOneBatch(c, cursor, batch_size, only_market, dry_run)
+      (c) => runOneBatch(c, cursor, batch_size, only_market, dry_run, restrict_to_internal_game_ids)
     );
     if (result.local.grains_observed === 0) break;
     cumulative.grains_observed += result.local.grains_observed;
