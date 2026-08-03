@@ -64,6 +64,14 @@ The probe proved the payload is present and shaped correctly; it did NOT prove t
    `method_version` event — **HALT and report**, do not proceed as ops. (Expected NOT to trigger:
    this reuses the seed definition/selection unchanged.)
 
+## ⛔ GATE — the first paid one-game validation is blocked on V1-OP-8a (GAP-36, 2026-08-02)
+
+**The first paid one-game validation under V1-OP-8 is gated on committed and independently-audited V1-OP-8a.** **No historical Odds API request may be issued until the bounded caller exists.**
+
+STEP-0 re-confirmation (2026-08-02, code-verified) found that **no committed driver can execute a bounded one-game retrieval + persistence**: `scripts/v1_4b_stage2_phase_b_seed.ts` has zero CLI args and scans a discovery cache that does not cover the restored cohort's dates, and `scripts/v1_4c_phase_b_populate.ts` has no game selector and would populate globally-eligible hlr grains beyond the target. Issuing a paid request before the scoped caller exists would retrieve data with **no authorized bounded persistence path**. The per-event primitives themselves are sound — the missing object is orchestration. See **GAP-36** and **`tickets/V1_TICKET_OP_8A.md`**.
+
+This gate does **not** otherwise rescope V1-OP-8; the goal, reuse constraints, spend discipline, and STEP-0 gates below are unchanged.
+
 ## Dependencies / sequencing
 - **V1-OP-5a (BDL box scores, leg 1) — sequenced BEFORE OP-8 for the backlog** (`tickets/V1_TICKET_OP_5A.md`).
   The dependency is **UPSTREAM for the backlog** (only **1 of 47** backlog games currently has box
