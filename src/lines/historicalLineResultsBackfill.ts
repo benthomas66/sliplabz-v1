@@ -171,6 +171,16 @@ export interface BackfillOptions {
   readonly on_batch?: (progress: BackfillCounters) => void;
 }
 
+/**
+ * V1-OP-8b (Option A). The minimal query surface the batch work needs. Both
+ * `pg.Client` (the standalone path) and `Tx` (a caller-supplied game-level
+ * transaction) satisfy it, so widening `fetchBatch` / `upsertGrain` to this
+ * type is a PURE WIDENING — no statement, parameter, or behavior changes.
+ */
+export interface GrainQueryRunner {
+  query: (sql: string, params?: unknown[]) => Promise<{ rows: unknown[]; rowCount: number | null }>;
+}
+
 /** V1-4b lesson: fresh pg.Client per batch. No pooled client held idle. */
 async function openFreshClient(connection_string: string): Promise<pg.Client> {
   // Supabase hosted requires TLS; the driver auto-detects sslmode from the
@@ -246,7 +256,7 @@ export async function loadMarketStatKeys(
  * DISTINCT ON key so pagination is stable.
  */
 async function fetchBatch(
-  c: pg.Client,
+  c: GrainQueryRunner,
   cursor: { game: string; player: string; market: string } | null,
   batch_size: number,
   only_market: string | null,
@@ -306,7 +316,7 @@ async function fetchBatch(
  * whether the row was newly INSERTed (xmax = 0) versus UPDATEd (xmax <> 0).
  */
 async function upsertGrain(
-  c: pg.Client,
+  c: GrainQueryRunner,
   row: GrainRow,
   stat_value: number
 ): Promise<'inserted' | 'updated'> {
@@ -394,12 +404,18 @@ export function extractStatValue(
  * Returns the batch's local counters + the last cursor consumed.
  */
 async function runOneBatch(
-  c: pg.Client,
+  c: GrainQueryRunner,
   cursor: { game: string; player: string; market: string } | null,
   batch_size: number,
   only_market: string | null,
   dry_run: boolean,
-  restrict_to_internal_game_ids: ReadonlyArray<string> | null = null
+  restrict_to_internal_game_ids: ReadonlyArray<string> | null = null,
+  /**
+   * V1-OP-8b: when false the CALLER owns the transaction (a game-level tx), so
+   * this batch issues no BEGIN/COMMIT/ROLLBACK of its own. Defaults to true —
+   * the standalone path's behavior is unchanged.
+   */
+  owns_transaction: boolean = true
 ): Promise<{
   local: {
     grains_observed: number;
@@ -430,7 +446,7 @@ async function runOneBatch(
     rows_updated: 0,
     rows_per_market: {} as Record<string, number>,
   };
-  await c.query('BEGIN');
+  if (owns_transaction) await c.query('BEGIN');
   try {
     for (const row of rows) {
       const stat_value = extractStatValue(row.normalized_stats, row.canonical_stat_key);
@@ -444,13 +460,17 @@ async function runOneBatch(
       local.rows_per_market[row.market_key] =
         (local.rows_per_market[row.market_key] ?? 0) + 1;
     }
-    if (dry_run) {
-      await c.query('ROLLBACK');
-    } else {
-      await c.query('COMMIT');
+    if (owns_transaction) {
+      if (dry_run) {
+        await c.query('ROLLBACK');
+      } else {
+        await c.query('COMMIT');
+      }
     }
   } catch (err) {
-    await c.query('ROLLBACK').catch(() => undefined);
+    // Only roll back a transaction we opened. Inside a caller-owned tx the
+    // error propagates and the OUTER transaction rolls the whole game back.
+    if (owns_transaction) await c.query('ROLLBACK').catch(() => undefined);
     throw err;
   }
   const last = rows[rows.length - 1]!;
@@ -468,6 +488,82 @@ async function runOneBatch(
  * Run the full populator. Batches until fetchBatch returns 0 rows.
  * Fresh pg.Client per batch. Retries connection-class errors up to 3 times.
  */
+/**
+ * V1-OP-8b (Option A). Populate hlr on a CALLER-SUPPLIED transaction.
+ *
+ * Same eligibility SQL, same (game, player, market) grain, same cursor
+ * traversal, same version-aware UPSERT, same counters as the standalone
+ * runner — only transaction ownership moves to the caller, so a bulk caller
+ * can roll `source_closing_quotes` + `canonical_closing_points` + hlr back
+ * TOGETHER for a game (GAP-37).
+ *
+ * Two DELIBERATE differences from the standalone form, both forced by running
+ * inside someone else's transaction (neither changes the standalone path):
+ *   * No BEGIN/COMMIT per batch — the caller's transaction spans every batch.
+ *   * No fresh-client connection retry. A retry is meaningless inside an
+ *     aborted transaction; the error propagates so the OUTER transaction rolls
+ *     the whole game back. `batches_retried` is therefore always 0 here.
+ */
+export async function runHistoricalLineResultsBackfillInTx(
+  tx: GrainQueryRunner,
+  options: Pick<BackfillOptions, 'batch_size' | 'only_market' | 'restrict_to_internal_game_ids' | 'on_batch'>
+): Promise<BackfillCounters> {
+  const batch_size = options.batch_size ?? DEFAULT_BATCH_SIZE;
+  const only_market = options.only_market ?? null;
+  const restrict_to_internal_game_ids = options.restrict_to_internal_game_ids ?? null;
+  const run_id = randomUUID();
+  const started_at = new Date().toISOString();
+
+  const cumulative = {
+    grains_observed: 0,
+    grains_skipped_missing_stat: 0,
+    rows_inserted: 0,
+    rows_updated: 0,
+    batches_ok: 0,
+    batches_retried: 0,
+    rows_per_market: {} as Record<string, number>,
+  };
+
+  type BatchCursor = { game: string; player: string; market: string } | null;
+  let cursor: BatchCursor = null;
+  let previous_cursor: BatchCursor = null;
+  for (;;) {
+    const result = await runOneBatch(
+      tx, cursor, batch_size, only_market, /* dry_run */ false,
+      restrict_to_internal_game_ids, /* owns_transaction */ false,
+    );
+    cumulative.grains_observed += result.local.grains_observed;
+    cumulative.grains_skipped_missing_stat += result.local.grains_skipped_missing_stat;
+    cumulative.rows_inserted += result.local.rows_inserted;
+    cumulative.rows_updated += result.local.rows_updated;
+    for (const [m, n] of Object.entries(result.local.rows_per_market)) {
+      cumulative.rows_per_market[m] = (cumulative.rows_per_market[m] ?? 0) + n;
+    }
+    if (result.local.grains_observed === 0) break;
+    cumulative.batches_ok += 1;
+    if (
+      result.last_cursor === null ||
+      (previous_cursor !== null &&
+        previous_cursor.game === result.last_cursor.game &&
+        previous_cursor.player === result.last_cursor.player &&
+        previous_cursor.market === result.last_cursor.market)
+    ) {
+      break;
+    }
+    previous_cursor = cursor;
+    cursor = result.last_cursor;
+    options.on_batch?.(Object.freeze({ ...cumulative, run_id, started_at, finished_at: new Date().toISOString() }) as BackfillCounters);
+  }
+
+  return Object.freeze({
+    ...cumulative,
+    rows_per_market: Object.freeze(cumulative.rows_per_market),
+    run_id,
+    started_at,
+    finished_at: new Date().toISOString(),
+  });
+}
+
 export async function runHistoricalLineResultsBackfill(
   options: BackfillOptions
 ): Promise<BackfillCounters> {

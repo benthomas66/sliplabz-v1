@@ -31,6 +31,7 @@
 
 import { randomUUID } from 'node:crypto';
 import type { PoolClient } from 'pg';
+import { withTransaction, type Tx } from '../../db/transaction.js';
 import type { SliplabzPool } from '../../db/connection.js';
 import { selectCanonicalClosingPoint } from '../../lines/canonicalClosingPoint.js';
 import type { CanonicalClosingPointResult } from '../../lines/canonicalClosingPoint.js';
@@ -142,14 +143,39 @@ export async function deleteAndReplaceCanonicalClosingPointsFromDb(
   pool: SliplabzPool,
   input: DeleteAndReplaceInput
 ): Promise<DeleteAndReplaceResult> {
-  // 1. Read source_closing_quotes across ALL required games. Done via the
-  //    read-side pool (a fast single query).
+  // V1-OP-8b Option A: thin withTransaction wrapper over the extracted
+  // in-transaction body. Existing callers keep one transaction per call.
+  return withTransaction(pool, (tx) => deleteAndReplaceCanonicalClosingPointsInTx(tx, input));
+}
+
+/**
+ * V1-OP-8b (Option A). In-transaction body of the canonical delete-and-replace.
+ *
+ * Runs entirely on a CALLER-SUPPLIED `Tx` and opens NO transaction of its own.
+ *
+ * IMPORTANT (correctness, not style): the `source_closing_quotes` READ also
+ * goes through the same `Tx`. Inside a game-level transaction the quotes were
+ * written moments earlier and are NOT yet visible to a separate pool
+ * connection; reading through the tx is what makes canonical selection see
+ * them. For the standalone wrapper this is equivalent — the read still happens
+ * before the DELETE, against the same data — and it is strictly more
+ * consistent (read and write share one snapshot).
+ *
+ * The selection math (`computeCanonicalRows`), the DELETE/INSERT statements,
+ * their batching, and the returned counters are IDENTICAL to the
+ * pre-extraction body; only transaction ownership moves to the caller.
+ */
+export async function deleteAndReplaceCanonicalClosingPointsInTx(
+  tx: Tx,
+  input: DeleteAndReplaceInput
+): Promise<DeleteAndReplaceResult> {
+  // 1. Read source_closing_quotes across ALL required games — through the tx.
   const params: unknown[] = [];
   const filter = input.restrict_to_internal_game_ids === null
     ? ''
     : ` WHERE internal_game_id = ANY($1::uuid[])`;
   if (input.restrict_to_internal_game_ids !== null) params.push(input.restrict_to_internal_game_ids);
-  const q = await pool.query(
+  const q = await tx.query(
     `SELECT internal_game_id::text AS internal_game_id,
             internal_player_id::text AS internal_player_id,
             market_key, bookmaker_key, source_class, close_capture_state,
@@ -199,15 +225,13 @@ export async function deleteAndReplaceCanonicalClosingPointsFromDb(
     }
   }
 
-  // 4. Transactional delete-and-replace.
-  const client: PoolClient = await pool.connect();
+  // 4. Delete-and-replace on the caller's transaction.
   let inserted = 0;
   let deleted = 0;
-  try {
-    await client.query('BEGIN');
+  {
     const del = input.restrict_to_internal_game_ids === null
-      ? await client.query(`DELETE FROM canonical_closing_points`)
-      : await client.query(
+      ? await tx.query(`DELETE FROM canonical_closing_points`)
+      : await tx.query(
           `DELETE FROM canonical_closing_points WHERE internal_game_id = ANY($1::uuid[])`,
           [input.restrict_to_internal_game_ids]
         );
@@ -239,15 +263,9 @@ export async function deleteAndReplaceCanonicalClosingPointsFromDb(
          total_eligible_sportsbook_count, sportsbook_count_at_selected_point,
          coverage_label, close_boundary_utc, computation_version)
         VALUES ${values.join(',')}`;
-      const ins = await client.query(sql, bParams);
+      const ins = await tx.query(sql, bParams);
       inserted += ins.rowCount ?? 0;
     }
-    await client.query('COMMIT');
-  } catch (err) {
-    try { await client.query('ROLLBACK'); } catch { /* ignore */ }
-    throw err;
-  } finally {
-    client.release();
   }
 
   return Object.freeze({

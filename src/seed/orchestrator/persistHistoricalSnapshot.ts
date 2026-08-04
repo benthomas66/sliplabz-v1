@@ -119,11 +119,38 @@ export async function persistHistoricalSnapshot(
     readonly on_after_snapshot?: (tx: Tx) => Promise<void>;
   }
 ): Promise<PersistHistoricalSnapshotResult> {
+  // V1-OP-8b Option A: this entry point is now a THIN withTransaction wrapper
+  // over the extracted in-transaction body. Behavior for every existing caller
+  // (the seed pipeline especially) is unchanged — one transaction per triple,
+  // committed on success, rolled back on error.
+  return withTransaction(pool, (tx) => persistHistoricalSnapshotInTx(tx, input, hooks));
+}
+
+/**
+ * V1-OP-8b (Option A). The in-transaction body of the historical persist.
+ *
+ * Runs entirely on a CALLER-SUPPLIED `Tx` and opens NO transaction of its own,
+ * so a bulk caller can enclose many triples plus the canonical + hlr stages in
+ * ONE game-level transaction: a failure at any stage rolls the whole game back
+ * together, leaving no orphan `source_closing_quotes` (GAP-37).
+ *
+ * The statements, their order, their parameters, and the returned ids are
+ * IDENTICAL to the pre-extraction body — only the transaction OWNERSHIP moves
+ * to the caller.
+ */
+export async function persistHistoricalSnapshotInTx(
+  tx: Tx,
+  input: PersistHistoricalSnapshotInput,
+  hooks?: {
+    /** Test-only fault point AFTER snapshot + before quotes. */
+    readonly on_after_snapshot?: (tx: Tx) => Promise<void>;
+  }
+): Promise<PersistHistoricalSnapshotResult> {
   const ingestion_run_id = randomUUID();
   const raw_response_id = randomUUID();
   const market_snapshot_id = randomUUID();
 
-  return withTransaction(pool, async (tx) => {
+  {
     // 1. Ingestion run (kind=historical_query, terminal state=complete).
     await tx.query(
       `INSERT INTO oddsapi_ingestion_runs (
@@ -373,7 +400,7 @@ export async function persistHistoricalSnapshot(
       source_closing_quote_ids: Object.freeze(source_closing_quote_ids),
       canonical_closing_point_id: null,
     });
-  });
+  }
 }
 
 function normalizeName(s: string): string {
