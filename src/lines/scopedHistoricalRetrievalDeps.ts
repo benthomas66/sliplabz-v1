@@ -38,6 +38,7 @@ import { fetchHistoricalEventOdds } from '../seed/httpClient.js';
 import { persistHistoricalSnapshot } from '../seed/orchestrator/persistHistoricalSnapshot.js';
 import { deleteAndReplaceCanonicalClosingPointsFromDb } from '../seed/orchestrator/canonicalClosingPointsForSeed.js';
 import { runHistoricalLineResultsBackfill } from './historicalLineResultsBackfill.js';
+import { reconcileQuota } from '../odds/quotaForecast.js';
 import { evaluateCloseBoundary } from './closeBoundary.js';
 import type { OddsapiHttpConfig } from '../odds/httpClient.js';
 import type { SliplabzPool } from '../db/connection.js';
@@ -46,6 +47,11 @@ import type { ScopedRetrievalDeps, TripleGroup, ScopedRetrievalPlan } from './sc
 
 /** V1-4b Phase B used computation_version=2 for the corrected canonical pass. */
 export const CANONICAL_COMPUTATION_VERSION = 2;
+
+/** GAP-38 ledger payload threaded from the paid seam into the persist. */
+type PersistQuotaReconciliation = NonNullable<
+  Parameters<typeof persistHistoricalSnapshot>[1]['quota_reconciliation']
+>;
 
 export interface WiringConfig {
   readonly pool: SliplabzPool;
@@ -77,6 +83,9 @@ export function buildScopedRetrievalDeps(
   base: Pick<ScopedRetrievalDeps, 'processSnapshot' | 'loadFixtureSnapshot'>,
 ): ScopedRetrievalDeps {
   let persistIndex = 0;
+  // GAP-38: the reconciliation for THIS paid call, captured at the fetch seam
+  // and persisted to the ledger by every triple of the same request.
+  let quota_reconciliation: PersistQuotaReconciliation | undefined;
 
   return {
     // READ-ONLY. Boundary from the committed primitive over STORED fields.
@@ -121,9 +130,22 @@ export function buildScopedRetrievalDeps(
       // Provider's own accounting for reconciliation against the forecast.
       const raw = res.headers['x-requests-last'];
       const observed = typeof raw === 'number' ? raw : typeof raw === 'string' ? Number(raw) : NaN;
+      const observed_x_requests_last = Number.isFinite(observed) ? observed : null;
+      // GAP-38: reconcile forecast vs the provider's own accounting and hold
+      // the verdict so the persist writes it to the ledger.
+      const rq = reconcileQuota({
+        forecast: plan.forecast_total_credits,
+        observed_x_requests_last,
+      });
+      quota_reconciliation = {
+        forecast: rq.forecast,
+        observed: rq.observed,
+        delta_flag: rq.delta_flag,
+        x_requests_last: observed_x_requests_last,
+      };
       return {
         response: res.body_json as HistoricalEventOddsResponse,
-        observed_x_requests_last: Number.isFinite(observed) ? observed : null,
+        observed_x_requests_last,
         // carried for persistence lineage
         __headers: res.headers,
         __redacted_url: res.redacted_request_url,
@@ -160,6 +182,9 @@ export function buildScopedRetrievalDeps(
         raw_response_body: null,
         raw_response_body_text: null,
         candidates: group.candidates,
+        // GAP-38: present only on a live (paid) run; undefined otherwise, so
+        // the persist keeps its historical null-column behavior.
+        ...(quota_reconciliation !== undefined ? { quota_reconciliation } : {}),
       });
       return { source_closing_quote_ids: r.source_closing_quote_ids };
     },

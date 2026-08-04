@@ -41,6 +41,7 @@ import type {
   CloseCaptureEvaluation,
   HistoricalSourceClosingQuoteCandidate,
 } from '../types.js';
+import type { QuotaDeltaFlag } from '../../shared/enums.js';
 
 export interface PersistHistoricalSnapshotInput {
   readonly seed_run_id: string;
@@ -68,6 +69,23 @@ export interface PersistHistoricalSnapshotInput {
   readonly raw_response_body_text: string | null;
   /** Candidate closing quotes for THIS (event, market, bookmaker) triple. */
   readonly candidates: ReadonlyArray<HistoricalSourceClosingQuoteCandidate>;
+  /**
+   * GAP-38 (V1-OP-8). OPTIONAL quota reconciliation for this paid request —
+   * the `reconcileQuota` verdict plus the provider's own `x-requests-last`.
+   * When supplied, it is persisted to the `oddsapi_ingestion_runs` ledger so
+   * every paid call is reconstructable from the DB rather than from a session
+   * transcript.
+   *
+   * ADDITIVE + BACKWARD-COMPATIBLE: when omitted (the seed path and every
+   * pre-existing caller), the four quota columns stay NULL and the INSERT is
+   * otherwise byte-identical to its previous behavior.
+   */
+  readonly quota_reconciliation?: {
+    readonly forecast: number;
+    readonly observed: number | null;
+    readonly delta_flag: QuotaDeltaFlag;
+    readonly x_requests_last: number | null;
+  };
   /**
    * @deprecated (V1-4b Phase B correction). Ignored. The per-(event,
    * bookmaker, market) transaction is the WRONG grain for canonical
@@ -124,8 +142,12 @@ export async function persistHistoricalSnapshot(
          http_status_last,
          content_type_last,
          response_headers_last,
-         result_state
-       ) VALUES ($1,'historical_query','historical_event_odds',$2,$3::jsonb,$4::jsonb,'[]'::jsonb,$5,$6::jsonb,$7,$8,$9,$10,$11,$12::jsonb,'complete')`,
+         result_state,
+         quota_forecast,
+         quota_observed,
+         quota_delta_flag,
+         x_requests_last
+       ) VALUES ($1,'historical_query','historical_event_odds',$2,$3::jsonb,$4::jsonb,'[]'::jsonb,$5,$6::jsonb,$7,$8,$9,$10,$11,$12::jsonb,'complete',$13,$14,$15::quota_delta_flag,$16)`,
       [
         ingestion_run_id,
         input.provider_event_id,
@@ -139,6 +161,11 @@ export async function persistHistoricalSnapshot(
         200,
         'application/json',
         JSON.stringify(input.response_headers),
+        // GAP-38: null for callers that supply no reconciliation (seed path).
+        input.quota_reconciliation?.forecast ?? null,
+        input.quota_reconciliation?.observed ?? null,
+        input.quota_reconciliation?.delta_flag ?? null,
+        input.quota_reconciliation?.x_requests_last ?? null,
       ]
     );
 
