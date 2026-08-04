@@ -33,23 +33,10 @@ import {
   type BatchRunnerDeps,
   type ManifestEntry,
 } from '../src/lines/bulkHistoricalRepair.js';
-import {
-  persistHistoricalSnapshotInTx,
-} from '../src/seed/orchestrator/persistHistoricalSnapshot.js';
-import { deleteAndReplaceCanonicalClosingPointsInTx } from '../src/seed/orchestrator/canonicalClosingPointsForSeed.js';
-import { runHistoricalLineResultsBackfillInTx } from '../src/lines/historicalLineResultsBackfill.js';
-import { CANONICAL_COMPUTATION_VERSION } from '../src/lines/scopedHistoricalRetrievalDeps.js';
-import { groupCandidatesByTriple } from '../src/lines/scopedHistoricalRetrieval.js';
-import { processHistoricalSnapshot } from '../src/seed/historicalEventOdds.js';
-import { evaluateCloseBoundary } from '../src/lines/closeBoundary.js';
-import { fetchHistoricalEventOdds } from '../src/seed/httpClient.js';
-import { reconcileQuota } from '../src/odds/quotaForecast.js';
+import { buildBatchApplyDeps } from '../src/lines/bulkRepairWiring.js';
 import { buildLiveOddsapiConfig } from '../src/lines/liveInvokeGate.js';
 import { openPool } from '../src/db/connection.js';
 import { withTransaction } from '../src/db/transaction.js';
-import { LAUNCH_MARKET_KEYS } from '../src/odds/marketKeys.js';
-import { V1_BOOKMAKER_ALLOWLIST } from '../src/odds/bookmakerAllowlist.js';
-import type { HistoricalEventOddsResponse } from '../src/seed/types.js';
 
 const DB_URL = process.env['SLIPLABZ_HOSTED_DATABASE_URL'];
 if (DB_URL === undefined || DB_URL === '') {
@@ -69,8 +56,6 @@ const CLI = {
   ceiling: Number(flag('--ceiling') ?? '440'),
   apply: argv.includes('--apply'),
 };
-
-const BOOKS = V1_BOOKMAKER_ALLOWLIST.filter((b) => b.source_class === 'sportsbook').map((b) => b.provider_key);
 
 /** Frozen manifest file: one `<internal_game_id> <provider_event_id>` per line. */
 function readManifest(path: string): ManifestEntry[] {
@@ -113,130 +98,30 @@ const dryRunDeps: BatchRunnerDeps = {
 };
 
 /**
- * Gate (c) APPLY deps. Constructed ONLY on --apply + ODDSAPI_LIVE_INVOKE=1.
- * Reuses the committed atomic path — no new persistence math here.
+ * Gate (c) APPLY deps — V1-OP-8c: delegates to the COMMITTED assembly in
+ * `src/lines/bulkRepairWiring.ts`, which is the exact function the
+ * positive-persistence test exercises (standing rule 5b). The script no longer
+ * owns any effectful wiring of its own.
  */
 async function buildApplyDeps(): Promise<BatchRunnerDeps> {
   const api_key = process.env['ODDS_API_KEY'];
   if (api_key === undefined || api_key === '') throw new Error('# V1-OP-8b: ODDS_API_KEY required for --apply.');
-  const oddsapi_config = buildLiveOddsapiConfig({ allow_live_invoke: true });
-
-  const pr = await pool.query('SELECT internal_player_id::text AS id, normalized_name FROM players');
-  const players = new Map<string, string>();
-  for (const row of pr.rows as Array<{ id: string; normalized_name: string }>) {
-    if (row.normalized_name !== '') players.set(row.normalized_name, row.id);
-  }
-
-  // Per-call reconciliation captured at the paid seam, persisted to the ledger.
-  let quota: { forecast: number; observed: number | null; delta_flag: never; x_requests_last: number | null } | undefined;
-  let seed_run_id = randomUUID();
-  let currentEvent = '';
-  let currentBoundary = '';
-  let snapshotTs: string | null = null;
-
-  return {
-    alreadyRepaired,
-
-    // PAID. Completes and RETURNS before any transaction opens.
-    retrieveGame: async (entry) => {
-      seed_run_id = randomUUID();
-      currentEvent = entry.provider_event_id;
-
-      const g = await pool.query(
-        `SELECT internal_game_id::text AS id, status::text AS status, scheduled_start_utc, actual_start_utc
-           FROM games WHERE internal_game_id = $1::uuid`,
-        [entry.internal_game_id],
-      );
-      const row = g.rows[0] as { id: string; status: string; scheduled_start_utc: Date | null; actual_start_utc: Date | null };
-      const b = evaluateCloseBoundary({
-        internal_game_id: row.id,
-        status: row.status,
-        scheduled_start_utc: row.scheduled_start_utc === null ? null : row.scheduled_start_utc.toISOString(),
-        actual_start_utc: row.actual_start_utc === null ? null : row.actual_start_utc.toISOString(),
-      } as never);
-      if (b.close_boundary_utc === null) throw new Error(`no close boundary for ${entry.internal_game_id}`);
-      currentBoundary = b.close_boundary_utc;
-
-      const forecast = 40; // GAP-29-corrected: 4 markets x ceil(8/10) x 10 x 1 event
-      const res = await fetchHistoricalEventOdds(oddsapi_config, {
-        api_key,
-        at_timestamp: b.close_boundary_utc, // normalized to second precision at the HTTP owner
-        provider_event_id: entry.provider_event_id,
-        market_keys: [...LAUNCH_MARKET_KEYS],
-        bookmaker_keys: BOOKS,
-        odds_format: 'american',
-      });
-      if (res.status !== 200 || res.body_json === null) {
-        throw new Error(`historical fetch failed (status=${res.status}); no retry attempted, no rows written`);
-      }
-      const lastRaw = res.headers['x-requests-last'];
-      const remRaw = res.headers['x-requests-remaining'];
-      const observed = typeof lastRaw === 'number' ? lastRaw : Number(lastRaw);
-      const remaining = typeof remRaw === 'number' ? remRaw : Number(remRaw);
-      const x_requests_last = Number.isFinite(observed) ? observed : null;
-      const rq = reconcileQuota({ forecast, observed_x_requests_last: x_requests_last });
-      quota = { forecast: rq.forecast, observed: rq.observed, delta_flag: rq.delta_flag as never, x_requests_last };
-
-      const response = res.body_json as HistoricalEventOddsResponse;
-      snapshotTs = response.timestamp ?? null;
-      const processed = processHistoricalSnapshot({
-        requested_close_boundary_utc: b.close_boundary_utc,
-        response,
-      } as never);
-
-      return {
-        close_capture_state: processed.close_capture.close_capture_state as 'eligible' | 'close_capture_stale' | 'no_snapshot',
-        snapshot_age_seconds_before_boundary: processed.close_capture.age_seconds_before_boundary ?? null,
-        triples: groupCandidatesByTriple(processed.candidates),
-        credits_forecast: forecast,
-        credits_observed: x_requests_last,
-        x_requests_remaining: Number.isFinite(remaining) ? remaining : null,
-      };
-    },
-
-    // ONE game-level transaction — the committed atomic path.
+  return buildBatchApplyDeps({
+    pool,
+    connection_string: db_url,
+    oddsapi_config: buildLiveOddsapiConfig({ allow_live_invoke: true }),
+    api_key,
+    seed_run_id_factory: () => randomUUID(),
+    now: () => new Date().toISOString(),
     runInGameTransaction: (body) => withTransaction(pool, body),
-
-    persistTripleInTx: async (tx, group) => {
-      const r = await persistHistoricalSnapshotInTx(tx, {
-        seed_run_id,
-        provider_event_id: currentEvent,
-        linked_internal_game_id: null,
-        linked_internal_player_ids_by_normalized_name: players,
-        market_key: group.market_key,
-        bookmaker_key: group.bookmaker_key,
-        bookmaker_title: group.bookmaker_key,
-        requested_close_boundary_utc: currentBoundary,
-        provider_snapshot_time: snapshotTs,
-        retrieved_at: new Date().toISOString(),
-        close_capture: { close_capture_state: 'eligible' } as never,
-        redacted_request_url:
-          `https://api.the-odds-api.com/v4/historical/sports/basketball_wnba/events/${currentEvent}/odds?apiKey=REDACTED&date=${currentBoundary}`,
-        request_params: { date: currentBoundary, markets: [group.market_key], bookmakers: [group.bookmaker_key], oddsFormat: 'american' },
-        response_headers: {},
-        raw_response_body: null,
-        raw_response_body_text: null,
-        candidates: group.candidates,
-        ...(quota !== undefined ? { quota_reconciliation: quota } : {}),
-      });
-      return { source_closing_quote_ids: r.source_closing_quote_ids };
+    on_quota_trail: (entry, t) => {
+      console.log(
+        `#   quota ${entry.internal_game_id.slice(0, 8)}  forecast=${t.forecast} observed=${t.observed ?? '-'} ` +
+          `flag=${t.delta_flag} last=${t.x_requests_last ?? '-'} remaining=${t.x_requests_remaining ?? '-'} ` +
+          `used=${t.x_requests_used ?? '-'} cumulative_batch=${t.cumulative_batch_spend}`,
+      );
     },
-
-    canonicalInTx: async (tx, internal_game_id) => {
-      const r = await deleteAndReplaceCanonicalClosingPointsInTx(tx, {
-        restrict_to_internal_game_ids: [internal_game_id],
-        computation_version: CANONICAL_COMPUTATION_VERSION,
-      });
-      return { inserted: r.inserted };
-    },
-
-    hlrInTx: async (tx, internal_game_id) => {
-      const c = await runHistoricalLineResultsBackfillInTx(tx, {
-        restrict_to_internal_game_ids: [internal_game_id],
-      });
-      return { rows_inserted: c.rows_inserted, rows_updated: c.rows_updated };
-    },
-  };
+  });
 }
 
 async function main(): Promise<void> {
