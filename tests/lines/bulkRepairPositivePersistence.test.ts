@@ -64,6 +64,13 @@ function controlledDb(opts: { failOn?: RegExp } = {}) {
     if (sql === 'COMMIT') { committed.push(...staged); staged = []; return { rows: [], rowCount: 0 }; }
     if (sql === 'ROLLBACK') { staged = []; return { rows: [], rowCount: 0 }; }
 
+    // GAP-40 §5: persisted-row count read-backs (must precede the generic
+    // source_closing_quotes branch below).
+    if (/count\(\*\)::int AS n FROM (source_closing_quotes|canonical_closing_points|historical_line_results)/.test(sql)) {
+      const tbl = /FROM (\w+)/.exec(sql)![1]!;
+      const n = staged.filter((w) => new RegExp(`INSERT INTO ${tbl}`).test(w.sql)).length;
+      return { rows: [{ n }], rowCount: 1 };
+    }
     if (/FROM players/.test(sql)) return { rows: fixturePlayerRows(), rowCount: 0 };
     if (/FROM historical_line_results\s*\n?\s*WHERE internal_game_id/.test(sql) || /count\(\*\)::int AS n FROM historical_line_results/.test(sql)) {
       return { rows: [{ n: 0 }], rowCount: 1 };
@@ -241,21 +248,33 @@ describe('V1-OP-8c (B) POSITIVE PERSISTENCE — the exact --apply assembly', () 
 });
 
 describe('V1-OP-8c (C) COMPLETE quota trail persisted', () => {
-  it('all seven trail fields populate with the fixture values', async () => {
+  it('GAP-40: the PERSISTED ROW carries all six ledger quota fields (not the trail object)', async () => {
     const db = controlledDb();
     const trails: BatchQuotaTrail[] = [];
     await runBoundedBatch(buildDeps(db, { n: 0 }, trails), {
       manifest: [ENTRY], max_total_credits: 100, dry_run: false,
     });
-    assert.equal(trails.length, 1);
-    const t = trails[0]!;
-    assert.equal(t.forecast, 40);
-    assert.equal(t.observed, 40);
-    assert.equal(t.delta_flag, 'exact_match');
-    assert.equal(t.x_requests_last, 40);
-    assert.equal(t.x_requests_remaining, 99347, 'the GAP-39 observability defect is fixed');
-    assert.equal(t.x_requests_used, 653);
-    assert.equal(t.cumulative_batch_spend, 40, 'batch-attributed, not a global balance delta');
+    // RULE 5b, sharpened: assert the ACTUAL INSERT's bound parameters — the
+    // durable row — NOT `on_quota_trail`. Asserting the intermediate object is
+    // precisely what let x_requests_remaining/used land null through a
+    // "passing" test (GAP-40).
+    const runs = paramsOf(db.writes, /INSERT INTO oddsapi_ingestion_runs/);
+    assert.ok(runs.length > 0, 'ingestion-run rows were written');
+    for (const w of runs) {
+      const sql = w.sql;
+      for (const col of ['quota_forecast', 'quota_observed', 'quota_delta_flag', 'x_requests_last', 'x_requests_remaining', 'x_requests_used']) {
+        assert.ok(sql.includes(col), `${col} is in the INSERT column list`);
+      }
+      const tail = w.params.slice(-6);
+      assert.deepEqual(
+        tail,
+        [40, 40, 'exact_match', 40, 99347, 653],
+        `persisted quota params were ${JSON.stringify(tail)}`,
+      );
+      assert.ok(tail.every((v) => v !== null && v !== undefined), 'NO ledger column lands null');
+    }
+    // the batch-side cumulative is reported on the batch, not the row
+    assert.equal(trails[0]!.cumulative_batch_spend, 40, 'batch-attributed, not a global delta');
   });
 
   it('cumulative batch spend accrues across games (attributed to THIS batch)', async () => {
@@ -268,15 +287,19 @@ describe('V1-OP-8c (C) COMPLETE quota trail persisted', () => {
     assert.deepEqual(trails.map((t) => t.cumulative_batch_spend), [40, 80]);
   });
 
-  it('the ledger INSERT actually binds the reconciliation (not just permitted keys)', async () => {
+  it('GAP-40 §5: the ledger reports PERSISTED-ROW counts, not returned ids', async () => {
     const db = controlledDb();
-    await runBoundedBatch(buildDeps(db, { n: 0 }, []), { manifest: [ENTRY], max_total_credits: 100, dry_run: false });
-    const runs = paramsOf(db.writes, /INSERT INTO oddsapi_ingestion_runs/);
-    assert.ok(runs.length > 0);
-    for (const w of runs) {
-      const tail = w.params.slice(-4);
-      assert.deepEqual(tail, [40, 40, 'exact_match', 40], `bound quota params were ${JSON.stringify(tail)}`);
-    }
+    const report = await runBoundedBatch(buildDeps(db, { n: 0 }, []), {
+      manifest: [ENTRY], max_total_credits: 100, dry_run: false,
+    });
+    const led = report.ledger[0]!;
+    // The controlled DB answers countPersistedGrains from the staged rows, so
+    // the ledger must equal the ACTUAL persisted row count for each table.
+    const actualScq = db.writes.filter((w) => /INSERT INTO source_closing_quotes/.test(w.sql)).length;
+    assert.equal(led.grains.source_closing_quotes, actualScq,
+      `ledger scq ${led.grains.source_closing_quotes} must equal persisted rows ${actualScq}`);
+    assert.ok(/count\(\*\)::int AS n FROM source_closing_quotes/.test(db.stmts.join('\n')),
+      'the ledger count is read back from the table, not derived from returned ids');
   });
 });
 

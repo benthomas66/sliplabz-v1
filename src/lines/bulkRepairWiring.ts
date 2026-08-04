@@ -250,11 +250,27 @@ export function buildBatchApplyDeps(cfg: BatchWiringConfig): BatchRunnerDeps {
                 observed: quota.observed,
                 delta_flag: quota.delta_flag,
                 x_requests_last: quota.x_requests_last,
+                // GAP-40: route the balance-curve fields to the ledger.
+                x_requests_remaining: quota.x_requests_remaining,
+                x_requests_used: quota.x_requests_used,
               },
             }
           : {}),
       });
       return { source_closing_quote_ids: r.source_closing_quote_ids };
+    },
+
+    // GAP-40 §5: authoritative persisted-row counts, read inside the same tx.
+    countPersistedGrains: async (tx, internal_game_id) => {
+      const one = async (sql: string) => {
+        const r = await tx.query(sql, [internal_game_id]);
+        return Number((r.rows[0] as { n: number } | undefined)?.n ?? 0);
+      };
+      return {
+        source_closing_quotes: await one('SELECT count(*)::int AS n FROM source_closing_quotes WHERE internal_game_id = $1::uuid'),
+        canonical_closing_points: await one('SELECT count(*)::int AS n FROM canonical_closing_points WHERE internal_game_id = $1::uuid'),
+        historical_line_results: await one('SELECT count(*)::int AS n FROM historical_line_results WHERE internal_game_id = $1::uuid'),
+      };
     },
 
     canonicalInTx: async (tx, internal_game_id) => {

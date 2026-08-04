@@ -72,17 +72,19 @@ describe('GAP-38 — quota reconciliation reaches the ledger', () => {
         observed: rq.observed,
         delta_flag: rq.delta_flag,
         x_requests_last: 40,
+        x_requests_remaining: 99347,
+        x_requests_used: 653,
       },
     }));
 
     const ins = runInsert(calls);
-    // columns present in the INSERT
-    for (const col of ['quota_forecast', 'quota_observed', 'quota_delta_flag', 'x_requests_last']) {
+    // columns present in the INSERT (GAP-40 widened this to six)
+    for (const col of ['quota_forecast', 'quota_observed', 'quota_delta_flag', 'x_requests_last', 'x_requests_remaining', 'x_requests_used']) {
       assert.ok(ins.sql.includes(col), `${col} in the INSERT column list`);
     }
     // and BOUND with the real values — this is the anti-silent-no-op guard
-    const tail = ins.params.slice(-4);
-    assert.deepEqual(tail, [40, 40, 'exact_match', 40], `bound params were ${JSON.stringify(tail)}`);
+    const tail = ins.params.slice(-6);
+    assert.deepEqual(tail, [40, 40, 'exact_match', 40, 99347, 653], `bound params were ${JSON.stringify(tail)}`);
     assert.ok(tail.every((v) => v !== null && v !== undefined), 'no column silently left null when reconciliation is supplied');
   });
 
@@ -104,20 +106,24 @@ describe('GAP-38 — quota reconciliation reaches the ledger', () => {
           observed: rq.observed,
           delta_flag: rq.delta_flag,
           x_requests_last: observed,
+          x_requests_remaining: 99347,
+          x_requests_used: 653,
         },
       }));
-      const p = runInsert(calls).params.slice(-4);
+      const p = runInsert(calls).params.slice(-6);
       assert.equal(p[2], expected, `ledger records ${expected} — a billing anomaly is greppable`);
       assert.equal(p[0], forecast);
       assert.equal(p[1], observed);
       assert.equal(p[3], observed);
+      assert.equal(p[4], 99347, 'GAP-40: balance-curve column persisted');
+      assert.equal(p[5], 653, 'GAP-40: cumulative-usage column persisted');
     }
   });
 
   it('TEST 3 (backward-compat): no reconciliation → four nulls, INSERT otherwise unchanged', async () => {
     const withRq = capturingPool();
     await persistHistoricalSnapshot(withRq.pool, baseInput({
-      quota_reconciliation: { forecast: 40, observed: 40, delta_flag: 'exact_match', x_requests_last: 40 },
+      quota_reconciliation: { forecast: 40, observed: 40, delta_flag: 'exact_match', x_requests_last: 40, x_requests_remaining: 99347, x_requests_used: 653 },
     }));
     const withoutRq = capturingPool();
     await persistHistoricalSnapshot(withoutRq.pool, baseInput()); // seed-path shape
@@ -127,8 +133,8 @@ describe('GAP-38 — quota reconciliation reaches the ledger', () => {
 
     // identical SQL — the statement does not branch on the optional input
     assert.equal(a.sql, b.sql, 'one INSERT statement for both callers');
-    // the seed path leaves all four null
-    assert.deepEqual(b.params.slice(-4), [null, null, null, null], 'seed path columns stay NULL');
+    // the seed path leaves all SIX null (GAP-40 widened the set)
+    assert.deepEqual(b.params.slice(-6), [null, null, null, null, null, null], 'seed path columns stay NULL');
     // every OTHER bound parameter is byte-identical between the two callers.
     // $1 is a per-call randomUUID (correctly non-deterministic) — assert its
     // SHAPE rather than equality, and compare everything after it exactly.
@@ -136,8 +142,8 @@ describe('GAP-38 — quota reconciliation reaches the ledger', () => {
     assert.match(String(a.params[0]), UUID);
     assert.match(String(b.params[0]), UUID);
     assert.deepEqual(
-      b.params.slice(1, -4),
-      a.params.slice(1, -4),
+      b.params.slice(1, -6),
+      a.params.slice(1, -6),
       'all pre-existing parameters unchanged — seed path byte-identical',
     );
   });

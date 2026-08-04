@@ -67,6 +67,19 @@ export interface AtomicGamePersistDeps {
   readonly runInGameTransaction: <T>(body: (tx: Tx) => Promise<T>) => Promise<T>;
   /** Committed persist, in-transaction form. Called once per triple. */
   readonly persistTripleInTx: (tx: Tx, group: TripleGroup) => Promise<{ readonly source_closing_quote_ids: ReadonlyArray<string> }>;
+  /**
+   * GAP-40 §5. Read back the ACTUAL persisted row counts for the game, inside
+   * the same transaction. The ledger is the attribution source of truth for
+   * spend and repair across the remainder and full backlog, so it must report
+   * persisted-row actuals — NOT returned ids, which over-count by the number of
+   * rows the `(player, market, book)` UNIQUE collapses on upsert (the canary
+   * reported scq=165 against 156 actual).
+   */
+  readonly countPersistedGrains?: (tx: Tx, internal_game_id: string) => Promise<{
+    readonly source_closing_quotes: number;
+    readonly canonical_closing_points: number;
+    readonly historical_line_results: number;
+  }>;
   /** Committed canonical owner, in-transaction, restricted to this game. */
   readonly canonicalInTx: (tx: Tx, internal_game_id: string) => Promise<{ readonly inserted: number }>;
   /** Committed hlr populator, in-transaction, restricted to this game. */
@@ -100,6 +113,15 @@ export async function persistGameAtomically(
     }
     const canonical = await deps.canonicalInTx(tx, internal_game_id);
     const hlr = await deps.hlrInTx(tx, internal_game_id);
+    // GAP-40 §5: prefer PERSISTED-ROW actuals over returned-id counts.
+    if (deps.countPersistedGrains !== undefined) {
+      const actual = await deps.countPersistedGrains(tx, internal_game_id);
+      return Object.freeze({
+        source_closing_quotes: actual.source_closing_quotes,
+        canonical_closing_points: actual.canonical_closing_points,
+        historical_line_results: actual.historical_line_results,
+      });
+    }
     return Object.freeze({
       source_closing_quotes: scq,
       canonical_closing_points: canonical.inserted,

@@ -44,6 +44,12 @@ import type {
 import type { QuotaDeltaFlag } from '../../shared/enums.js';
 
 export interface PersistHistoricalSnapshotInput {
+  /**
+   * COMPLETENESS SWEEP (2026-08-04): accepted for caller symmetry with the
+   * seed pipeline but INTENTIONALLY NOT PERSISTED here — `oddsapi_ingestion_runs`
+   * has no `seed_run_id` column. Recorded explicitly so the sweep matrix has no
+   * unexplained (a)-without-(b) cell.
+   */
   readonly seed_run_id: string;
   readonly provider_event_id: string;
   readonly linked_internal_game_id: string | null;
@@ -85,6 +91,14 @@ export interface PersistHistoricalSnapshotInput {
     readonly observed: number | null;
     readonly delta_flag: QuotaDeltaFlag;
     readonly x_requests_last: number | null;
+    /**
+     * GAP-40. The provider's running balance at this request. Without it the
+     * spend CURVE across an unattended batch is not reconstructable from the
+     * DB — the original GAP-38 objective.
+     */
+    readonly x_requests_remaining?: number | null;
+    /** GAP-40. Provider-side cumulative usage at this request. */
+    readonly x_requests_used?: number | null;
   };
   /**
    * @deprecated (V1-4b Phase B correction). Ignored. The per-(event,
@@ -173,8 +187,10 @@ export async function persistHistoricalSnapshotInTx(
          quota_forecast,
          quota_observed,
          quota_delta_flag,
-         x_requests_last
-       ) VALUES ($1,'historical_query','historical_event_odds',$2,$3::jsonb,$4::jsonb,'[]'::jsonb,$5,$6::jsonb,$7,$8,$9,$10,$11,$12::jsonb,'complete',$13,$14,$15::quota_delta_flag,$16)`,
+         x_requests_last,
+         x_requests_remaining,
+         x_requests_used
+       ) VALUES ($1,'historical_query','historical_event_odds',$2,$3::jsonb,$4::jsonb,'[]'::jsonb,$5,$6::jsonb,$7,$8,$9,$10,$11,$12::jsonb,'complete',$13,$14,$15::quota_delta_flag,$16,$17,$18)`,
       [
         ingestion_run_id,
         input.provider_event_id,
@@ -193,6 +209,10 @@ export async function persistHistoricalSnapshotInTx(
         input.quota_reconciliation?.observed ?? null,
         input.quota_reconciliation?.delta_flag ?? null,
         input.quota_reconciliation?.x_requests_last ?? null,
+        // GAP-40: the balance-curve columns. Null when absent, so every
+        // pre-existing caller (incl. the seed path) is byte-identical.
+        input.quota_reconciliation?.x_requests_remaining ?? null,
+        input.quota_reconciliation?.x_requests_used ?? null,
       ]
     );
 
