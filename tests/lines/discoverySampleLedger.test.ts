@@ -17,7 +17,7 @@ import {
   DISCOVERY_LEDGER_INSERT_SQL,
 } from '../../src/lines/discoverySampleLedger.js';
 import { runDiscoverySample, type DiscoveryLedgerRow, type UnmappedGame } from '../../src/lines/unmappedDiscoverySample.js';
-import { parseArgs, parsePlan, planHash } from '../../scripts/v1_op_8b_discovery_sample.js';
+import { parseArgs, parsePlan, planHash, probePlanHash, boundaryHash } from '../../scripts/v1_op_8b_discovery_sample.js';
 import type { Tx } from '../../src/db/transaction.js';
 import type { OddsapiRequestResult } from '../../src/odds/httpClient.js';
 
@@ -186,5 +186,41 @@ describe('§0.4 — operator entry is double-gated and plan-bound', () => {
     const code = ENTRY.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
     assert.ok(!/fetchHistoricalEventOdds|runBoundedBatch|buildBatchApplyDeps/.test(code),
       'no 40cr retrieval path imported by the discovery entry');
+  });
+});
+
+describe('§0.4 GAP-42 — the ratification hash binds the PROBE INPUTS', () => {
+  const g = (id: string, sched: string): UnmappedGame => ({
+    internal_game_id: id, slate_date: sched.slice(0, 10), home_abbr: 'IND', away_abbr: 'NY',
+    home_name: 'Indiana Fever', away_name: 'New York Liberty', in_recent_n: true,
+    scheduled_start_utc: sched, actual_start_utc: null, status: 'final',
+  });
+
+  it('THE REGRESSION: moving a tip changes the gate hash even when the DATE is unchanged', () => {
+    const a = [g('g1', '2026-07-19T17:00:00.000Z')];
+    const b = [g('g1', '2026-07-19T20:00:00.000Z')]; // same slate date, different boundary
+    assert.equal(planHash(a.map((x) => x.slate_date)), planHash(b.map((x) => x.slate_date)),
+      'the legacy 12-date hash is BLIND to this — which is why it must not gate');
+    assert.notEqual(probePlanHash(a), probePlanHash(b), 'the probe-plan hash catches it');
+    assert.notEqual(boundaryHash(a), boundaryHash(b));
+  });
+
+  it('changing WHICH game is probed changes the hash', () => {
+    assert.notEqual(
+      probePlanHash([g('g1', '2026-07-19T17:00:00.000Z')]),
+      probePlanHash([g('g2', '2026-07-19T17:00:00.000Z')]),
+      'the game set is bound, not just the instants');
+  });
+
+  it('is order-independent and stable', () => {
+    const a = [g('g1', '2026-07-19T17:00:00.000Z'), g('g2', '2026-07-21T02:00:00.000Z')];
+    assert.equal(probePlanHash(a), probePlanHash([...a].reverse()));
+    assert.equal(probePlanHash(a), probePlanHash(a), 'deterministic');
+  });
+
+  it('the operator gates on the probe-plan hash, not the date hash', () => {
+    assert.match(ENTRY, /const hash = probePlanHash\(parsed\.games\)/, 'gate bound to probe inputs');
+    assert.match(ENTRY, /probe-plan hash mismatch/, 'mismatch aborts');
+    assert.ok(!/args\.expect_sha256 !== dates_hash/.test(ENTRY), 'the date hash never gates');
   });
 });

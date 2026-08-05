@@ -86,16 +86,45 @@ export function planHash(dates: ReadonlyArray<string>): string {
   return createHash('sha256').update([...dates].sort().join('\n'), 'utf8').digest('hex');
 }
 
+/**
+ * THE RATIFICATION HASH. sha256 over the actual PROBE INPUTS: one
+ * `internal_game_id|probe_at` line per game, ascending, "\n"-joined, no
+ * trailing newline, UTF-8.
+ *
+ * GAP-42 made the paid unit a close boundary rather than a slate date, so the
+ * 12-date hash no longer covers what the run actually fires on — a plan could
+ * keep its dates while every probe instant moved. Binding the ratified value to
+ * `(game, boundary)` pairs makes the founder's approval cover both the game set
+ * AND the exact instants probed.
+ */
+export function probePlanHash(games: ReadonlyArray<UnmappedGame>): string {
+  const { groups } = buildProbePlan(games);
+  const lines: string[] = [];
+  for (const g of groups) for (const game of g.games) lines.push(`${game.internal_game_id}|${g.probe_at}`);
+  lines.sort();
+  return createHash('sha256').update(lines.join('\n'), 'utf8').digest('hex');
+}
+
+/** sha256 over just the ascending distinct boundary instants (the paid units). */
+export function boundaryHash(games: ReadonlyArray<UnmappedGame>): string {
+  const { groups } = buildProbePlan(games);
+  return createHash('sha256').update(groups.map((g) => g.probe_at).sort().join('\n'), 'utf8').digest('hex');
+}
+
 async function main(): Promise<void> {
   const args = parseArgs(process.argv.slice(2));
   const parsed = parsePlan(readFileSync(args.plan_path, 'utf8'));
-  const hash = planHash(parsed.dates);
+  const dates_hash = planHash(parsed.dates);
   // GAP-42: probes are anchored to each game's close boundary, so the paid unit
   // is a distinct BOUNDARY INSTANT, not a slate date.
   const { groups, no_boundary } = buildProbePlan(parsed.games);
+  // The gate binds the PROBE INPUTS, not the dates — a plan could keep its
+  // dates while every instant moved.
+  const hash = probePlanHash(parsed.games);
+  const boundaries_hash = boundaryHash(parsed.games);
 
   if (args.expect_sha256 !== null && args.expect_sha256 !== hash) {
-    throw new Error(`plan hash mismatch: expected ${args.expect_sha256}, got ${hash} — refusing to run`);
+    throw new Error(`probe-plan hash mismatch: expected ${args.expect_sha256}, got ${hash} — refusing to run`);
   }
 
   const live = process.env.ODDSAPI_LIVE_INVOKE === '1';
@@ -105,7 +134,9 @@ async function main(): Promise<void> {
   console.log(`  plan:          ${args.plan_path}`);
   console.log(`  games:         ${parsed.games.length}   slate dates: ${parsed.dates.length}`);
   console.log(`  probes:        ${groups.length} distinct close boundaries (GAP-42)   unprobed (no boundary): ${no_boundary.length}`);
-  console.log(`  sha256(dates): ${hash}`);
+  console.log(`  sha256(24 game|boundary pairs): ${hash}   <-- --expect-sha256 gates on THIS`);
+  console.log(`  sha256(22 boundaries):          ${boundaries_hash}`);
+  console.log(`  sha256(12 dates, legacy):       ${dates_hash}`);
   console.log(`  forecast:      ${groups.length} × 1cr = ${groups.length} credits`);
   console.log(`  ceiling:       ${args.max_credits} credits`);
   console.log(`  --apply:       ${args.apply}    ODDSAPI_LIVE_INVOKE=1: ${live}`);
