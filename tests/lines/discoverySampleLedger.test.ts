@@ -36,7 +36,7 @@ function recordingTx() {
 }
 
 const ROW: DiscoveryLedgerRow = Object.freeze({
-  slate_date: '2026-07-19', forecast: 1, observed: 1, delta_flag: 'exact_match',
+  probe_at: '2026-07-19T23:15:00Z', slate_date: '2026-07-19', forecast: 1, observed: 1, delta_flag: 'exact_match',
   x_requests_last: 1, x_requests_remaining: 98_765, x_requests_used: 1_235,
   cumulative_sample_spend: 7,
 });
@@ -84,10 +84,10 @@ describe('§0.4 — the discovery ledger row PERSISTS the full billing trail', (
   });
 
   it('END-TO-END: the real runner persists one ledger row per paid call', async () => {
-    const plan = new Map<string, UnmappedGame[]>([
-      ['2026-07-19', [{ internal_game_id: 'g1', slate_date: '2026-07-19', home_abbr: 'IND', away_abbr: 'NY', home_name: 'Indiana Fever', away_name: 'New York Liberty', in_recent_n: true }]],
-      ['2026-07-21', [{ internal_game_id: 'g2', slate_date: '2026-07-21', home_abbr: 'SEA', away_abbr: 'MIN', home_name: 'Seattle Storm', away_name: 'Minnesota Lynx', in_recent_n: true }]],
-    ]);
+    const games: UnmappedGame[] = [
+      { internal_game_id: 'g1', slate_date: '2026-07-19', home_abbr: 'IND', away_abbr: 'NY', home_name: 'Indiana Fever', away_name: 'New York Liberty', in_recent_n: true, scheduled_start_utc: '2026-07-19T17:00:00.000Z', actual_start_utc: null, status: 'final' as const },
+      { internal_game_id: 'g2', slate_date: '2026-07-21', home_abbr: 'SEA', away_abbr: 'MIN', home_name: 'Seattle Storm', away_name: 'Minnesota Lynx', in_recent_n: true, scheduled_start_utc: '2026-07-21T20:00:00.000Z', actual_start_utc: null, status: 'final' as const },
+    ];
     const { tx, stmts } = recordingTx();
     const fetchEvents = (async (_c: unknown, i: { at_timestamp: string }) => ({
       status: 200, content_type: 'application/json',
@@ -107,7 +107,7 @@ describe('§0.4 — the discovery ledger row PERSISTS the full billing trail', (
           });
         },
       },
-      { plan, max_total_credits: 20, dry_run: false },
+      { games, max_total_credits: 20, dry_run: false },
     );
 
     assert.equal(stmts.length, 2, 'a persisted row per paid call — spend is DB-reconcilable');
@@ -117,8 +117,11 @@ describe('§0.4 — the discovery ledger row PERSISTS the full billing trail', (
       assert.ok(s.params.includes(42), 'x_requests_used reached the row');
     }
     // The per-date evidence is distinct — not one date written twice.
-    const dates = stmts.map((s) => s.params[0]);
-    assert.deepEqual(dates, ['2026-07-19T23:59:59Z', '2026-07-21T23:59:59Z']);
+    // GAP-42: the persisted evidence is the CLOSE BOUNDARY (tip + 900s), never
+    // the old end-of-UTC-day stamp.
+    const probes = stmts.map((s) => s.params[0]);
+    assert.deepEqual(probes, ['2026-07-19T17:15:00Z', '2026-07-21T20:15:00Z']);
+    assert.ok(!probes.some((p) => String(p).endsWith('23:59:59Z')), 'the GAP-42 defect is gone from the ledger');
   });
 
   it('a DRY-RUN persists NOTHING', async () => {
@@ -130,7 +133,7 @@ describe('§0.4 — the discovery ledger row PERSISTS the full billing trail', (
         recordLedger: async (row, ctx) => { await recordDiscoveryLedgerInTx(tx, { row, ...ctx }); },
       },
       {
-        plan: new Map([['2026-07-19', [{ internal_game_id: 'g1', slate_date: '2026-07-19', home_abbr: 'IND', away_abbr: 'NY', home_name: 'A', away_name: 'B', in_recent_n: true }]]]),
+        games: [{ internal_game_id: 'g1', slate_date: '2026-07-19', home_abbr: 'IND', away_abbr: 'NY', home_name: 'A', away_name: 'B', in_recent_n: true, scheduled_start_utc: '2026-07-19T17:00:00.000Z', actual_start_utc: null, status: 'final' as const }],
         max_total_credits: 20, dry_run: true,
       },
     );
@@ -169,14 +172,14 @@ describe('§0.4 — operator entry is double-gated and plan-bound', () => {
 
   it('parses the frozen plan into date -> games, preserving recent-N', () => {
     const p = parsePlan([
-      JSON.stringify({ internal_game_id: 'g1', slate_date: '2026-07-19', home_abbr: 'IND', away_abbr: 'NY', home_name: 'A', away_name: 'B', in_recent_n: true }),
-      JSON.stringify({ internal_game_id: 'g2', slate_date: '2026-07-19', home_abbr: 'DAL', away_abbr: 'LA', home_name: 'C', away_name: 'D', in_recent_n: true }),
-      JSON.stringify({ internal_game_id: 'g3', slate_date: '2026-07-12', home_abbr: 'TOR', away_abbr: 'NY', home_name: 'E', away_name: 'F', in_recent_n: false }),
+      JSON.stringify({ internal_game_id: 'g1', slate_date: '2026-07-19', home_abbr: 'IND', away_abbr: 'NY', home_name: 'A', away_name: 'B', in_recent_n: true, scheduled_start_utc: '2026-07-19T17:00:00.000Z', actual_start_utc: null, status: 'final' }),
+      JSON.stringify({ internal_game_id: 'g2', slate_date: '2026-07-19', home_abbr: 'DAL', away_abbr: 'LA', home_name: 'C', away_name: 'D', in_recent_n: true, scheduled_start_utc: '2026-07-19T20:00:00.000Z', actual_start_utc: null, status: 'final' }),
+      JSON.stringify({ internal_game_id: 'g3', slate_date: '2026-07-12', home_abbr: 'TOR', away_abbr: 'NY', home_name: 'E', away_name: 'F', in_recent_n: false, scheduled_start_utc: '2026-07-12T19:00:00.000Z', actual_start_utc: null, status: 'final' }),
     ].join('\n'));
-    assert.equal(p.games, 3);
+    assert.equal(p.games.length, 3);
     assert.deepEqual(p.dates, ['2026-07-12', '2026-07-19']);
-    assert.equal(p.plan.get('2026-07-19')!.length, 2);
-    assert.equal(p.plan.get('2026-07-12')![0]!.in_recent_n, false, 'recent-N survives the round trip');
+    assert.equal(p.games.filter((g) => g.slate_date === '2026-07-19').length, 2);
+    assert.equal(p.games.find((g) => g.internal_game_id === 'g3')!.in_recent_n, false, 'recent-N survives the round trip');
   });
 
   it('the entry never reaches the 40cr seam', () => {

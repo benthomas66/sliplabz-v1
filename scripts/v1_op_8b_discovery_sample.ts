@@ -23,6 +23,7 @@ import { withTransaction } from '../src/db/transaction.js';
 import { openPool } from '../src/db/connection.js';
 import {
   runDiscoverySample,
+  buildProbePlan,
   type UnmappedGame,
   type SampleReport,
 } from '../src/lines/unmappedDiscoverySample.js';
@@ -68,22 +69,16 @@ export function parseArgs(argv: ReadonlyArray<string>): Args {
 
 /** The frozen plan file: one JSON object per line, ordered by date then game. */
 export function parsePlan(text: string): {
-  readonly plan: Map<string, UnmappedGame[]>;
+  readonly games: UnmappedGame[];
   readonly dates: string[];
-  readonly games: number;
 } {
-  const plan = new Map<string, UnmappedGame[]>();
-  let games = 0;
+  const games: UnmappedGame[] = [];
   for (const line of text.split('\n')) {
     if (line.trim() === '' || line.trimStart().startsWith('#')) continue;
-    const g = JSON.parse(line) as UnmappedGame;
-    const list = plan.get(g.slate_date) ?? [];
-    list.push(g);
-    plan.set(g.slate_date, list);
-    games += 1;
+    games.push(JSON.parse(line) as UnmappedGame);
   }
-  if (games === 0) throw new Error('empty plan: an explicit frozen plan is required; never an implicit scan');
-  return { plan, dates: [...plan.keys()].sort(), games };
+  if (games.length === 0) throw new Error('empty plan: an explicit frozen plan is required; never an implicit scan');
+  return { games, dates: [...new Set(games.map((g) => g.slate_date))].sort() };
 }
 
 /** sha256 over the ascending dates, "\n"-joined, no trailing newline, UTF-8. */
@@ -95,6 +90,9 @@ async function main(): Promise<void> {
   const args = parseArgs(process.argv.slice(2));
   const parsed = parsePlan(readFileSync(args.plan_path, 'utf8'));
   const hash = planHash(parsed.dates);
+  // GAP-42: probes are anchored to each game's close boundary, so the paid unit
+  // is a distinct BOUNDARY INSTANT, not a slate date.
+  const { groups, no_boundary } = buildProbePlan(parsed.games);
 
   if (args.expect_sha256 !== null && args.expect_sha256 !== hash) {
     throw new Error(`plan hash mismatch: expected ${args.expect_sha256}, got ${hash} — refusing to run`);
@@ -105,9 +103,10 @@ async function main(): Promise<void> {
 
   console.log('=== V1-OP-8b §0.4 DISCOVERY SAMPLE ===');
   console.log(`  plan:          ${args.plan_path}`);
-  console.log(`  dates:         ${parsed.dates.length}   games: ${parsed.games}`);
+  console.log(`  games:         ${parsed.games.length}   slate dates: ${parsed.dates.length}`);
+  console.log(`  probes:        ${groups.length} distinct close boundaries (GAP-42)   unprobed (no boundary): ${no_boundary.length}`);
   console.log(`  sha256(dates): ${hash}`);
-  console.log(`  forecast:      ${parsed.dates.length} × 1cr = ${parsed.dates.length} credits`);
+  console.log(`  forecast:      ${groups.length} × 1cr = ${groups.length} credits`);
   console.log(`  ceiling:       ${args.max_credits} credits`);
   console.log(`  --apply:       ${args.apply}    ODDSAPI_LIVE_INVOKE=1: ${live}`);
   console.log(`  MODE:          ${dry_run ? 'DRY-RUN (no call, no spend)' : 'LIVE (paid discovery calls)'}`);
@@ -145,11 +144,11 @@ async function main(): Promise<void> {
           console.log(`  [ledger] ${row.slate_date}  1cr  cum=${row.cumulative_sample_spend}  remaining=${row.x_requests_remaining}  run_id=${id}`);
         });
       },
-      on_date: (slate_date, events) => {
-        console.log(`  [discovery] ${slate_date}  events=${events}`);
+      on_probe: (probe_at, events, games) => {
+        console.log(`  [discovery] probe=${probe_at}  events=${events}  serves ${games} game(s)`);
       },
     },
-    { plan: parsed.plan, max_total_credits: args.max_credits, dry_run },
+    { games: parsed.games, max_total_credits: args.max_credits, dry_run },
   );
 
   console.log('\n=== CLASSIFICATION ===');

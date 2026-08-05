@@ -23,7 +23,9 @@
 
 import { fetchHistoricalEvents } from '../seed/httpClient.js';
 import { forecastHistoricalEventDiscoveryCost, reconcileQuota } from '../odds/quotaForecast.js';
-import { normalizeName } from '../identity/nameNormalization.js';
+import { matchTeamName } from './discoveryTeamMatch.js';
+import { evaluateCloseBoundary } from './closeBoundary.js';
+import type { GameStatus } from '../shared/enums.js';
 import type { OddsapiHttpConfig } from '../odds/httpClient.js';
 
 /** The three governed populations (V1-OP-8b §0.4). */
@@ -32,8 +34,13 @@ export type Population = 'b_discovery_recoverable' | 'c_unrecoverable';
 /** One unmapped game awaiting classification. */
 export interface UnmappedGame {
   readonly internal_game_id: string;
-  /** UTC date of the scheduled tip, `YYYY-MM-DD` — the discovery key. */
+  /** UTC date of the scheduled tip, `YYYY-MM-DD`. Reporting only — NOT the
+   *  probe key. GAP-42: the probe is anchored to the close boundary. */
   readonly slate_date: string;
+  /** GAP-42 boundary inputs, passed straight to `evaluateCloseBoundary`. */
+  readonly scheduled_start_utc: string;
+  readonly actual_start_utc: string | null;
+  readonly status: GameStatus;
   readonly home_abbr: string | null;
   readonly away_abbr: string | null;
   readonly home_name: string | null;
@@ -87,12 +94,14 @@ export function classifyGame(
   if (game.home_name === null || game.away_name === null) {
     return unrecoverable('no internal team identity — cannot match by name');
   }
-  const wantHome = normalizeName(game.home_name);
-  const wantAway = normalizeName(game.away_name);
-
+  // GAP-41: containment-tolerant on BOTH sides, so a city-less display name
+  // ("Tempo" vs "Toronto Tempo") no longer forces an artificial (c). The
+  // conservative posture is unchanged — both teams must still match, and the
+  // uniqueness check below still sends any ambiguity to (c).
   const hits = events.filter((e) => {
     if (e.home_team === undefined || e.away_team === undefined) return false;
-    return normalizeName(e.home_team) === wantHome && normalizeName(e.away_team) === wantAway;
+    return matchTeamName(game.home_name!, e.home_team) !== 'none'
+      && matchTeamName(game.away_name!, e.away_team) !== 'none';
   });
 
   if (hits.length === 1) {
@@ -100,11 +109,11 @@ export function classifyGame(
       ...base,
       population: 'b_discovery_recoverable' as const,
       matched_event_id: hits[0]!.id,
-      detail: 'exact_match on both teams',
+      detail: `matched on both teams (home=${matchTeamName(game.home_name, hits[0]!.home_team!)}, away=${matchTeamName(game.away_name, hits[0]!.away_team!)})`,
     });
   }
   if (hits.length > 1) return unrecoverable(`ambiguous — ${hits.length} events match both teams`);
-  return unrecoverable('no_match on this date');
+  return unrecoverable('no_match at the close boundary');
 }
 
 export interface SampleTotals {
@@ -139,8 +148,10 @@ export function summarize(
   });
 }
 
-/** Per-date billing, recorded so spend is reconstructable from the DB. */
+/** Per-CALL billing, recorded so spend is reconstructable from the DB. */
 export interface DiscoveryLedgerRow {
+  /** GAP-42: the close-boundary instant probed, not an end-of-day stamp. */
+  readonly probe_at: string;
   readonly slate_date: string;
   readonly forecast: number;
   readonly observed: number | null;
@@ -170,7 +181,7 @@ export interface DiscoveryDeps {
    * the SQL out of this module is what makes the report-only property testable.
    */
   readonly recordLedger?: (row: DiscoveryLedgerRow, ctx: DiscoveryCallContext) => Promise<void>;
-  readonly on_date?: (slate_date: string, events: number, row: DiscoveryLedgerRow) => void;
+  readonly on_probe?: (probe_at: string, events: number, games: number, row: DiscoveryLedgerRow) => void;
 }
 
 export interface SampleReport {
@@ -181,48 +192,99 @@ export interface SampleReport {
   readonly halt_reason: string | null;
 }
 
+/** One deduplicated probe: a close-boundary instant + the games it serves. */
+export interface ProbeGroup {
+  readonly probe_at: string;
+  readonly games: ReadonlyArray<UnmappedGame>;
+}
+
+/**
+ * PURE. GAP-42. Build the probe plan by anchoring EVERY game to the committed
+ * `evaluateCloseBoundary` — the same boundary the paid 40cr repair uses — and
+ * grouping games that share an instant so each is paid for once.
+ *
+ * The original sample probed `${slate_date}T23:59:59Z`, which fired a mean of
+ * 13.7h after tip (max 24h). "Absent from the listing a day later" is a much
+ * weaker claim than "unretrievable at the boundary the repair queries", and
+ * only the latter bears on the budget.
+ *
+ * A game with no close boundary (postponed/canceled) is returned separately —
+ * it can never be repaired, so paying to discover it would be waste.
+ */
+export function buildProbePlan(games: ReadonlyArray<UnmappedGame>): {
+  readonly groups: ReadonlyArray<ProbeGroup>;
+  readonly no_boundary: ReadonlyArray<UnmappedGame>;
+} {
+  const byInstant = new Map<string, UnmappedGame[]>();
+  const no_boundary: UnmappedGame[] = [];
+  for (const g of games) {
+    const b = evaluateCloseBoundary({
+      internal_game_id: g.internal_game_id,
+      scheduled_start_utc: g.scheduled_start_utc,
+      actual_start_utc: g.actual_start_utc,
+      status: g.status,
+    });
+    if (b.close_boundary_utc === null) {
+      no_boundary.push(g);
+      continue;
+    }
+    // Second precision — the historical endpoint rejects fractional seconds
+    // (the committed `toHistoricalDateParam` invariant).
+    const at = `${new Date(b.close_boundary_utc).toISOString().slice(0, 19)}Z`;
+    const list = byInstant.get(at) ?? [];
+    list.push(g);
+    byInstant.set(at, list);
+  }
+  const groups = [...byInstant.entries()]
+    .sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0))
+    .map(([probe_at, gs]) => Object.freeze({ probe_at, games: Object.freeze(gs) }));
+  return Object.freeze({ groups: Object.freeze(groups), no_boundary: Object.freeze(no_boundary) });
+}
+
 /**
  * Run the bounded sample over an EXPLICIT frozen plan.
  *
  *   * `dry_run` issues NO call and spends nothing.
- *   * The ceiling is checked BEFORE each date's call (halt-before-ceiling).
- *   * No blind retry: a failed date is recorded and the run stops.
+ *   * The ceiling is checked BEFORE each probe's call (halt-before-ceiling).
+ *   * No blind retry: a failed probe is recorded and the run stops.
  */
 export async function runDiscoverySample(
   deps: DiscoveryDeps,
   opts: {
-    /** Frozen plan: date -> the unmapped games on that date. */
-    readonly plan: ReadonlyMap<string, ReadonlyArray<UnmappedGame>>;
+    /** Frozen plan: the explicit games to classify. GAP-42 anchors the probes. */
+    readonly games: ReadonlyArray<UnmappedGame>;
     readonly max_total_credits: number;
     readonly dry_run: boolean;
   },
 ): Promise<SampleReport> {
-  const dates = [...opts.plan.keys()].sort();
-  if (dates.length === 0) {
+  if (opts.games.length === 0) {
     return Object.freeze({
       dry_run: opts.dry_run, rows: Object.freeze([]),
       totals: summarize([], 0, 0), ledger: Object.freeze([]),
-      halt_reason: 'empty_plan: an explicit frozen date plan is required; never an implicit scan',
+      halt_reason: 'empty_plan: an explicit frozen game plan is required; never an implicit scan',
     });
   }
 
+  const { groups, no_boundary } = buildProbePlan(opts.games);
   const doFetch = deps.fetchEvents ?? fetchHistoricalEvents;
   const rows: GameClassification[] = [];
   const ledger: DiscoveryLedgerRow[] = [];
   let cumulative = 0;
   let halt_reason: string | null = null;
 
-  for (const slate_date of dates) {
-    const games = opts.plan.get(slate_date) ?? [];
+  const stub = (g: UnmappedGame, detail: string): GameClassification => Object.freeze({
+    internal_game_id: g.internal_game_id, slate_date: g.slate_date,
+    matchup: `${g.away_abbr ?? '?'}@${g.home_abbr ?? '?'}`, in_recent_n: g.in_recent_n,
+    population: 'c_unrecoverable' as const, matched_event_id: null, detail,
+  });
 
+  // Postponed/canceled games have no close boundary, so no snapshot can exist
+  // and no credit is spent looking for one.
+  for (const g of no_boundary) rows.push(stub(g, 'no close boundary (postponed/canceled) — unrepairable, not probed'));
+
+  for (const group of groups) {
     if (opts.dry_run) {
-      for (const g of games) {
-        rows.push(Object.freeze({
-          internal_game_id: g.internal_game_id, slate_date, matchup: `${g.away_abbr ?? '?'}@${g.home_abbr ?? '?'}`,
-          in_recent_n: g.in_recent_n, population: 'c_unrecoverable' as const, matched_event_id: null,
-          detail: 'dry-run: no discovery call issued',
-        }));
-      }
+      for (const g of group.games) rows.push(stub(g, `dry-run: no discovery call issued (would probe ${group.probe_at})`));
       continue;
     }
 
@@ -232,15 +294,12 @@ export async function runDiscoverySample(
       break;
     }
 
-    // THE PAID CALL — discovery only, 1 credit.
-    const at_timestamp = `${slate_date}T23:59:59Z`;
+    // THE PAID CALL — discovery only, 1 credit, AT THE CLOSE BOUNDARY (GAP-42).
+    const at_timestamp = group.probe_at;
     const retrieved_at = new Date().toISOString();
-    const res = await doFetch(deps.oddsapi_config, {
-      api_key: deps.api_key,
-      at_timestamp,
-    });
+    const res = await doFetch(deps.oddsapi_config, { api_key: deps.api_key, at_timestamp });
     if (res.status !== 200 || res.body_json === null) {
-      halt_reason = `discovery failed for ${slate_date} (status=${res.status}); no retry attempted`;
+      halt_reason = `discovery failed at ${at_timestamp} (status=${res.status}); no retry attempted`;
       break;
     }
 
@@ -253,22 +312,21 @@ export async function runDiscoverySample(
     const rq = reconcileQuota({ forecast, observed_x_requests_last: x_requests_last });
     cumulative += x_requests_last ?? forecast;
     const row: DiscoveryLedgerRow = Object.freeze({
-      slate_date, forecast, observed: rq.observed, delta_flag: rq.delta_flag,
+      probe_at: at_timestamp, slate_date: group.games[0]!.slate_date,
+      forecast, observed: rq.observed, delta_flag: rq.delta_flag,
       x_requests_last, x_requests_remaining: num('x-requests-remaining'),
       x_requests_used: num('x-requests-used'), cumulative_sample_spend: cumulative,
     });
     ledger.push(row);
     await deps.recordLedger?.(row, {
-      at_timestamp,
-      redacted_request_url: res.redacted_request_url,
-      response_headers: res.headers,
-      retrieved_at,
+      at_timestamp, redacted_request_url: res.redacted_request_url,
+      response_headers: res.headers, retrieved_at,
     });
 
     const body = res.body_json as { data?: ReadonlyArray<DiscoveredEvent> } & ReadonlyArray<DiscoveredEvent>;
     const events: ReadonlyArray<DiscoveredEvent> = Array.isArray(body) ? body : (body.data ?? []);
-    deps.on_date?.(slate_date, events.length, row);
-    for (const g of games) rows.push(classifyGame(g, events));
+    deps.on_probe?.(at_timestamp, events.length, group.games.length, row);
+    for (const g of group.games) rows.push(classifyGame(g, events));
   }
 
   return Object.freeze({

@@ -10,12 +10,14 @@ import { readFileSync } from 'node:fs';
 
 import {
   runDiscoverySample,
+  buildProbePlan,
   classifyGame,
   summarize,
   type UnmappedGame,
   type DiscoveredEvent,
   type DiscoveryLedgerRow,
 } from '../../src/lines/unmappedDiscoverySample.js';
+import { matchTeamName } from '../../src/lines/discoveryTeamMatch.js';
 import type { OddsapiRequestResult } from '../../src/odds/httpClient.js';
 
 const SRC = readFileSync(new URL('../../src/lines/unmappedDiscoverySample.ts', import.meta.url), 'utf8');
@@ -24,7 +26,8 @@ const code = () => SRC.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '
 function game(over: Partial<UnmappedGame> & { internal_game_id: string; slate_date: string }): UnmappedGame {
   return {
     home_abbr: 'IND', away_abbr: 'NY', home_name: 'Indiana Fever', away_name: 'New York Liberty',
-    in_recent_n: true, ...over,
+    in_recent_n: true, scheduled_start_utc: `${over.slate_date}T23:00:00.000Z`,
+    actual_start_utc: null, status: 'final', ...over,
   };
 }
 const EV = (id: string, away: string, home: string): DiscoveredEvent =>
@@ -72,6 +75,7 @@ describe('§0.4 — (b)/(c) matching', () => {
       [EV('evt-1', 'New York Liberty', 'Indiana Fever')]);
     assert.equal(r.population, 'b_discovery_recoverable');
     assert.equal(r.matched_event_id, 'evt-1');
+    assert.match(r.detail, /home=exact/);
   });
 
   it('no match on the date → (c)', () => {
@@ -119,6 +123,9 @@ describe('§0.4 — the real path classifies 24 games and computes the (c) floor
         gs.push(game({
           internal_game_id: `g${i}`, slate_date: d,
           home_name: `Home ${i}`, away_name: `Away ${i}`, home_abbr: `H${i}`, away_abbr: `A${i}`,
+          // Distinct tip per game on a date, mirroring a real slate — this is
+          // what makes each game its own GAP-42 probe rather than a shared one.
+          scheduled_start_utc: `${d}T${String(16 + k).padStart(2, '0')}:00:00.000Z`,
           // last two dates sit outside the recent-N window
           in_recent_n: di < 10,
         }));
@@ -142,10 +149,10 @@ describe('§0.4 — the real path classifies 24 games and computes the (c) floor
     const ledger: DiscoveryLedgerRow[] = [];
     const rep = await runDiscoverySample(
       { oddsapi_config: {} as never, api_key: 'K', fetchEvents: fixtureFetch(byDate, calls), recordLedger: async (r) => { ledger.push(r); } },
-      { plan, max_total_credits: 20, dry_run: false },
+      { games: [...plan.values()].flat(), max_total_credits: 40, dry_run: false },
     );
 
-    assert.equal(calls.n, 12, 'exactly one discovery call per date');
+    assert.equal(calls.n, 24, 'GAP-42: one call per distinct close boundary');
     assert.equal(rep.rows.length, 24, 'all 24 games classified');
     assert.equal(rep.totals.n_b + rep.totals.n_c, 24);
     assert.equal(rep.totals.n_c, 6, 'every 4th game unmatched → (c)');
@@ -158,17 +165,17 @@ describe('§0.4 — the real path classifies 24 games and computes the (c) floor
     assert.ok(rep.totals.c_within_recent_n <= rep.totals.n_c);
   });
 
-  it('billing: 12 calls at 1cr, ledger recorded per date with the full trail', async () => {
+  it('billing: one 1cr call per probe, ledger recorded with the full trail', async () => {
     const plan = buildPlan();
     const calls = { n: 0, dates: [] as string[] };
     const ledger: DiscoveryLedgerRow[] = [];
     const rep = await runDiscoverySample(
       { oddsapi_config: {} as never, api_key: 'K', fetchEvents: fixtureFetch({}, calls), recordLedger: async (r) => { ledger.push(r); } },
-      { plan, max_total_credits: 20, dry_run: false },
+      { games: [...plan.values()].flat(), max_total_credits: 40, dry_run: false },
     );
-    assert.equal(rep.totals.credits_forecast, 12);
-    assert.equal(rep.totals.credits_observed, 12);
-    assert.equal(ledger.length, 12, 'a ledger row per call — spend is DB-reconcilable');
+    assert.equal(rep.totals.credits_forecast, 24);
+    assert.equal(rep.totals.credits_observed, 24);
+    assert.equal(ledger.length, 24, 'a ledger row per call — spend is DB-reconcilable');
     for (const r of ledger) {
       assert.equal(r.forecast, 1);
       assert.equal(r.observed, 1);
@@ -176,14 +183,14 @@ describe('§0.4 — the real path classifies 24 games and computes the (c) floor
       assert.equal(r.x_requests_last, 1);
       assert.ok(r.x_requests_remaining !== null && r.x_requests_used !== null, 'full trail, no nulls');
     }
-    assert.deepEqual(ledger.map((r) => r.cumulative_sample_spend), [1,2,3,4,5,6,7,8,9,10,11,12]);
+    assert.deepEqual(ledger.map((r) => r.cumulative_sample_spend), Array.from({ length: 24 }, (_, i) => i + 1));
   });
 
   it('dry-run issues NO call and spends nothing', async () => {
     const calls = { n: 0, dates: [] as string[] };
     const rep = await runDiscoverySample(
       { oddsapi_config: {} as never, api_key: 'K', fetchEvents: fixtureFetch({}, calls) },
-      { plan: buildPlan(), max_total_credits: 20, dry_run: true },
+      { games: [...buildPlan().values()].flat(), max_total_credits: 20, dry_run: true },
     );
     assert.equal(calls.n, 0, 'no discovery call on a dry-run');
     assert.equal(rep.totals.credits_observed, 0);
@@ -192,7 +199,7 @@ describe('§0.4 — the real path classifies 24 games and computes the (c) floor
 
   it('empty plan is a hard error, never an implicit scan', async () => {
     const rep = await runDiscoverySample({ oddsapi_config: {} as never, api_key: 'K' },
-      { plan: new Map(), max_total_credits: 20, dry_run: false });
+      { games: [], max_total_credits: 20, dry_run: false });
     assert.match(rep.halt_reason ?? '', /empty_plan/);
     assert.equal(rep.totals.credits_observed, 0);
   });
@@ -201,7 +208,7 @@ describe('§0.4 — the real path classifies 24 games and computes the (c) floor
     const calls = { n: 0, dates: [] as string[] };
     const rep = await runDiscoverySample(
       { oddsapi_config: {} as never, api_key: 'K', fetchEvents: fixtureFetch({}, calls) },
-      { plan: buildPlan(), max_total_credits: 5, dry_run: false },
+      { games: [...buildPlan().values()].flat(), max_total_credits: 5, dry_run: false },
     );
     assert.equal(calls.n, 5, 'five 1cr calls, then the sixth is refused');
     assert.match(rep.halt_reason ?? '', /ceiling/);
@@ -217,5 +224,117 @@ describe('§0.4 — the real path classifies 24 games and computes the (c) floor
     assert.equal(t.n_c, 2);
     assert.equal(t.n_b, 1);
     assert.equal(t.c_within_recent_n, 1, 'only the in-window (c) counts toward the floor');
+  });
+});
+
+describe('§0.4 GAP-41 — city-less expansion names must NOT be forced to (c)', () => {
+  // THE REGRESSION. `teams.display_name` stores "Tempo"/"Fire" for the two 2026
+  // expansion franchises; the provider (verified live, free endpoint) returns
+  // "Toronto Tempo"/"Portland Fire". The pre-fix matcher required exact
+  // equality and pushed all 6 such games to (c) by construction.
+  it('"Tempo" matches "Toronto Tempo" — the exact case that broke the fired sample', () => {
+    const r = classifyGame(
+      game({ internal_game_id: 'g-tor', slate_date: '2026-07-21', home_abbr: 'TOR', away_abbr: 'LV', home_name: 'Tempo', away_name: 'Las Vegas Aces' }),
+      [EV('evt-tor', 'Las Vegas Aces', 'Toronto Tempo')]);
+    assert.equal(r.population, 'b_discovery_recoverable', 'no longer an artifact (c)');
+    assert.equal(r.matched_event_id, 'evt-tor');
+    assert.match(r.detail, /token_containment/);
+  });
+
+  it('"Fire" matches "Portland Fire", on either side of the matchup', () => {
+    const home = classifyGame(
+      game({ internal_game_id: 'g-por-h', slate_date: '2026-07-23', home_abbr: 'POR', away_abbr: 'DAL', home_name: 'Fire', away_name: 'Dallas Wings' }),
+      [EV('evt-p1', 'Dallas Wings', 'Portland Fire')]);
+    assert.equal(home.population, 'b_discovery_recoverable');
+    const away = classifyGame(
+      game({ internal_game_id: 'g-por-a', slate_date: '2026-07-14', home_abbr: 'CON', away_abbr: 'POR', home_name: 'Connecticut Sun', away_name: 'Fire' }),
+      [EV('evt-p2', 'Portland Fire', 'Connecticut Sun')]);
+    assert.equal(away.population, 'b_discovery_recoverable');
+  });
+
+  it('containment does NOT admit a different team sharing a city word', () => {
+    assert.equal(matchTeamName('Chicago Sky', 'Chicago Fire'), 'none', 'one shared token is never a match');
+    assert.equal(matchTeamName('Sky', 'Chicago Fire'), 'none');
+    assert.equal(matchTeamName('Fire', 'Chicago Fire'), 'token_containment', 'nickname containment is the intended relaxation');
+  });
+
+  it('a bare CITY does not match — only the nickname does', () => {
+    assert.equal(matchTeamName('Portland', 'Portland Fire'), 'none', 'city-only must not promote');
+    assert.equal(matchTeamName('Toronto', 'Toronto Tempo'), 'none');
+  });
+
+  it('an empty/undefined identity still yields (c) — a correct one, not an artifact', () => {
+    assert.equal(matchTeamName('', 'Toronto Tempo'), 'none');
+    assert.equal(matchTeamName('TBD', 'Toronto Tempo'), 'none');
+  });
+
+  it('ambiguity is STILL resolved to (c) — the conservative posture is intact', () => {
+    const r = classifyGame(
+      game({ internal_game_id: 'g-amb', slate_date: '2026-07-21', home_name: 'Tempo', away_name: 'Las Vegas Aces' }),
+      [EV('e1', 'Las Vegas Aces', 'Toronto Tempo'), EV('e2', 'Las Vegas Aces', 'Tempo')]);
+    assert.equal(r.population, 'c_unrecoverable');
+    assert.match(r.detail, /ambiguous/);
+  });
+});
+
+describe('§0.4 GAP-42 — probes anchor to the committed close boundary', () => {
+  it('probes at scheduled+900s, NOT at end-of-UTC-day', () => {
+    const { groups } = buildProbePlan([
+      game({ internal_game_id: 'g1', slate_date: '2026-07-19', scheduled_start_utc: '2026-07-19T17:00:00.000Z' }),
+    ]);
+    assert.equal(groups.length, 1);
+    assert.equal(groups[0]!.probe_at, '2026-07-19T17:15:00Z', 'tip + the committed 900s grace');
+    assert.ok(!groups[0]!.probe_at.endsWith('23:59:59Z'), 'the GAP-42 defect is gone');
+  });
+
+  it('honours a verified actual start over the scheduled grace', () => {
+    const { groups } = buildProbePlan([
+      game({ internal_game_id: 'g1', slate_date: '2026-07-19', scheduled_start_utc: '2026-07-19T17:00:00.000Z', actual_start_utc: '2026-07-19T17:08:00.000Z' }),
+    ]);
+    assert.equal(groups[0]!.probe_at, '2026-07-19T17:08:00Z');
+  });
+
+  it('emits SECOND precision — the historical endpoint rejects milliseconds', () => {
+    const { groups } = buildProbePlan([game({ internal_game_id: 'g1', slate_date: '2026-07-19' })]);
+    assert.match(groups[0]!.probe_at, /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/);
+  });
+
+  it('games sharing a boundary are paid for ONCE', () => {
+    const { groups } = buildProbePlan([
+      game({ internal_game_id: 'g1', slate_date: '2026-07-21', scheduled_start_utc: '2026-07-21T02:00:00.000Z' }),
+      game({ internal_game_id: 'g2', slate_date: '2026-07-21', scheduled_start_utc: '2026-07-21T02:00:00.000Z' }),
+      game({ internal_game_id: 'g3', slate_date: '2026-07-21', scheduled_start_utc: '2026-07-21T00:00:00.000Z' }),
+    ]);
+    assert.equal(groups.length, 2, 'deduplicated by instant');
+    assert.equal(groups.find((g) => g.probe_at === '2026-07-21T02:15:00Z')!.games.length, 2);
+    assert.deepEqual(groups.map((g) => g.probe_at), ['2026-07-21T00:15:00Z', '2026-07-21T02:15:00Z'], 'ascending');
+  });
+
+  it('a postponed game has NO boundary and is never probed — no credit wasted', async () => {
+    const { groups, no_boundary } = buildProbePlan([
+      game({ internal_game_id: 'g-pp', slate_date: '2026-07-19', status: 'postponed' }),
+    ]);
+    assert.equal(groups.length, 0, 'nothing to probe');
+    assert.equal(no_boundary.length, 1);
+
+    const calls = { n: 0, dates: [] as string[] };
+    const rep = await runDiscoverySample(
+      { oddsapi_config: {} as never, api_key: 'K', fetchEvents: fixtureFetch({}, calls) },
+      { games: [game({ internal_game_id: 'g-pp', slate_date: '2026-07-19', status: 'postponed' })], max_total_credits: 20, dry_run: false },
+    );
+    assert.equal(calls.n, 0, 'zero credits spent on an unrepairable game');
+    assert.equal(rep.rows[0]!.population, 'c_unrecoverable');
+    assert.match(rep.rows[0]!.detail, /no close boundary/);
+  });
+
+  it('the ledger row records the probed BOUNDARY, not a slate date', async () => {
+    const calls = { n: 0, dates: [] as string[] };
+    const ledger: DiscoveryLedgerRow[] = [];
+    await runDiscoverySample(
+      { oddsapi_config: {} as never, api_key: 'K', fetchEvents: fixtureFetch({}, calls), recordLedger: async (r) => { ledger.push(r); } },
+      { games: [game({ internal_game_id: 'g1', slate_date: '2026-07-19', scheduled_start_utc: '2026-07-19T17:00:00.000Z' })], max_total_credits: 20, dry_run: false },
+    );
+    assert.equal(ledger[0]!.probe_at, '2026-07-19T17:15:00Z');
+    assert.equal(ledger[0]!.slate_date, '2026-07-19', 'slate date retained for reporting');
   });
 });
