@@ -338,3 +338,76 @@ describe('§0.4 GAP-42 — probes anchor to the committed close boundary', () =>
     assert.equal(ledger[0]!.slate_date, '2026-07-19', 'slate date retained for reporting');
   });
 });
+
+describe('§0.4 GAP-44 — a same-matchup series is disambiguated, not abandoned', () => {
+  // THE REGRESSION. `455f3873` (MIN@SEA, tip 2026-07-21T02:00Z) and `dcf8be4b`
+  // (MIN@SEA, tip 2026-07-22T19:00Z) are a two-game series. At the 02:15Z close
+  // boundary BOTH legs were listed, so the uniqueness rule sent leg 1 to (c) —
+  // correct under the old rule, but the case is disambiguable.
+  const series = (id: string, commence: string): DiscoveredEvent =>
+    ({ id, away_team: 'Minnesota Lynx', home_team: 'Seattle Storm', commence_time: commence });
+  const minsea = (id: string, sched: string) => game({
+    internal_game_id: id, slate_date: sched.slice(0, 10), home_abbr: 'SEA', away_abbr: 'MIN',
+    home_name: 'Seattle Storm', away_name: 'Minnesota Lynx', scheduled_start_utc: sched,
+  });
+
+  it('picks the leg commencing NEAREST this game boundary', () => {
+    const r = classifyGame(
+      minsea('455f3873', '2026-07-21T02:00:00.000Z'),
+      [series('evt-leg1', '2026-07-21T02:00:00Z'), series('evt-leg2', '2026-07-22T19:00:00Z')],
+      '2026-07-21T02:15:00Z');
+    assert.equal(r.population, 'b_discovery_recoverable', 'GAP-44: no longer abandoned');
+    assert.equal(r.matched_event_id, 'evt-leg1');
+    assert.match(r.detail, /disambiguated by commence_time/);
+  });
+
+  it('the SIBLING resolves to the other leg at its own boundary', () => {
+    const r = classifyGame(
+      minsea('dcf8be4b', '2026-07-22T19:00:00.000Z'),
+      [series('evt-leg1', '2026-07-21T02:00:00Z'), series('evt-leg2', '2026-07-22T19:00:00Z')],
+      '2026-07-22T19:15:00Z');
+    assert.equal(r.matched_event_id, 'evt-leg2', 'each leg claims its own event — never the same one twice');
+  });
+
+  it('CONSERVATIVE: an exact tie stays (c)', () => {
+    const r = classifyGame(
+      minsea('g', '2026-07-21T02:00:00.000Z'),
+      [series('a', '2026-07-21T02:00:00Z'), series('b', '2026-07-21T02:00:00Z')],
+      '2026-07-21T02:15:00Z');
+    assert.equal(r.population, 'c_unrecoverable');
+    assert.match(r.detail, /ambiguous/);
+  });
+
+  it('CONSERVATIVE: a missing commence_time stays (c)', () => {
+    const r = classifyGame(
+      minsea('g', '2026-07-21T02:00:00.000Z'),
+      [{ id: 'a', away_team: 'Minnesota Lynx', home_team: 'Seattle Storm' }, series('b', '2026-07-22T19:00:00Z')],
+      '2026-07-21T02:15:00Z');
+    assert.equal(r.population, 'c_unrecoverable', 'cannot rank without the field');
+  });
+
+  it('CONSERVATIVE: no probe anchor stays (c)', () => {
+    const r = classifyGame(
+      minsea('g', '2026-07-21T02:00:00.000Z'),
+      [series('a', '2026-07-21T02:00:00Z'), series('b', '2026-07-22T19:00:00Z')]);
+    assert.equal(r.population, 'c_unrecoverable', 'disambiguation requires the boundary');
+  });
+
+  it('a single match is unaffected — no behaviour change off the ambiguous path', () => {
+    const r = classifyGame(
+      minsea('g', '2026-07-21T02:00:00.000Z'),
+      [series('only', '2026-07-21T02:00:00Z')], '2026-07-21T02:15:00Z');
+    assert.equal(r.population, 'b_discovery_recoverable');
+    assert.match(r.detail, /matched on both teams \(home=/, 'the plain single-match detail, not the disambiguation one');
+  });
+
+  it('the runner threads the probe boundary into classification', async () => {
+    const calls = { n: 0, dates: [] as string[] };
+    const rep = await runDiscoverySample(
+      { oddsapi_config: {} as never, api_key: 'K',
+        fetchEvents: fixtureFetch({ '2026-07-21': [series('evt-leg1', '2026-07-21T02:00:00Z'), series('evt-leg2', '2026-07-22T19:00:00Z')] }, calls) },
+      { games: [minsea('455f3873', '2026-07-21T02:00:00.000Z')], max_total_credits: 20, dry_run: false });
+    assert.equal(rep.totals.n_b, 1, 'the real path disambiguates, not just the pure fn');
+    assert.equal(rep.rows[0]!.matched_event_id, 'evt-leg1');
+  });
+});

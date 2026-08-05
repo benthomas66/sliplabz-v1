@@ -79,6 +79,8 @@ export interface GameClassification {
 export function classifyGame(
   game: UnmappedGame,
   events: ReadonlyArray<DiscoveredEvent>,
+  /** GAP-44: the instant probed, used only to break a multi-match tie. */
+  probe_at?: string,
 ): GameClassification {
   const matchup = `${game.away_abbr ?? '?'}@${game.home_abbr ?? '?'}`;
   const base = {
@@ -112,7 +114,29 @@ export function classifyGame(
       detail: `matched on both teams (home=${matchTeamName(game.home_name, hits[0]!.home_team!)}, away=${matchTeamName(game.away_name, hits[0]!.away_team!)})`,
     });
   }
-  if (hits.length > 1) return unrecoverable(`ambiguous — ${hits.length} events match both teams`);
+  if (hits.length > 1) {
+    // GAP-44. A same-matchup two-game series lists BOTH legs at a shared probe
+    // (MIN@SEA on 2026-07-21 and 07-22). That is disambiguable, not
+    // unrecoverable: the correct event is the one commencing nearest THIS
+    // game's close boundary. Still conservative — a tie, a missing
+    // `commence_time`, or no probe anchor all stay (c).
+    const anchor = probe_at === undefined ? NaN : new Date(probe_at).getTime();
+    if (Number.isFinite(anchor) && hits.every((h) => h.commence_time !== undefined)) {
+      const scored = hits
+        .map((h) => ({ h, d: Math.abs(new Date(h.commence_time!).getTime() - anchor) }))
+        .filter((x) => Number.isFinite(x.d))
+        .sort((a, b) => a.d - b.d);
+      if (scored.length === hits.length && scored.length > 1 && scored[0]!.d < scored[1]!.d) {
+        return Object.freeze({
+          ...base,
+          population: 'b_discovery_recoverable' as const,
+          matched_event_id: scored[0]!.h.id,
+          detail: `matched on both teams; disambiguated by commence_time (${hits.length} candidates, nearest ${Math.round(scored[0]!.d / 1000)}s vs ${Math.round(scored[1]!.d / 1000)}s from the boundary)`,
+        });
+      }
+    }
+    return unrecoverable(`ambiguous — ${hits.length} events match both teams`);
+  }
   return unrecoverable('no_match at the close boundary');
 }
 
@@ -326,7 +350,7 @@ export async function runDiscoverySample(
     const body = res.body_json as { data?: ReadonlyArray<DiscoveredEvent> } & ReadonlyArray<DiscoveredEvent>;
     const events: ReadonlyArray<DiscoveredEvent> = Array.isArray(body) ? body : (body.data ?? []);
     deps.on_probe?.(at_timestamp, events.length, group.games.length, row);
-    for (const g of group.games) rows.push(classifyGame(g, events));
+    for (const g of group.games) rows.push(classifyGame(g, events, group.probe_at));
   }
 
   return Object.freeze({
