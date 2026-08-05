@@ -156,6 +156,93 @@ Before the full-backlog budget is finalized, run a **separate bounded discovery 
 
 ---
 
+---
+
+## §0.4 — Unmapped-tail discovery sample: DESIGN (authored 2026-08-05, zero-spend; awaiting founder approval)
+
+**Status: DESIGN ONLY — FINALIZED and committed for review. No discovery call, no probe, and no fetch has been made.**
+**⚠️ Execution of this sample is a SEPARATE FUTURE AUTHORIZATION (~12 credits). This commit records the design; it authorizes no spend.**
+
+### 1. The enumerated unmapped tail (read-only, 2026-08-05)
+
+**24 games across 12 distinct dates**, span `2026-07-12 .. 2026-07-30`. Discovery is billed **per date** (`/v4/historical/.../events`, **1cr/date**), not per game:
+
+| date | games | matchups |
+|---|---|---|
+| 07-12 | 1 | NY@TOR |
+| 07-13 | 2 | IND@LV · LA@ATL |
+| 07-14 | 3 | PHX@MIN · POR@CON · WSH@TOR |
+| 07-15 | 2 | SEA@CHI · LA@MIN |
+| 07-16 | 1 | GS@IND |
+| 07-17 | 1 | NY@DAL *(pgs=0 — GAP-32)* |
+| 07-19 | 3 | LA@DAL · CHI@ATL · CON@PHX |
+| 07-21 | 3 | LV@TOR · WSH@GS · MIN@SEA |
+| 07-22 | 4 | PHX@LA · MIN@SEA · CHI@NY · LV@WSH |
+| 07-23 | 2 | CON@IND · DAL@POR |
+| 07-26 | 1 | TBD@TBD *(exhibition)* |
+| 07-30 | 1 | MIN@TOR |
+
+**22 of 24 are box-score-complete.** The 2 that are not are already-known exclusions: `a11faedc` (GAP-32, zero BDL rows) and the `5a1248ff` exhibition.
+
+**Full-coverage discovery cost: 12 dates × 1cr = 12 credits.** That is cheap enough that sampling a *subset* of dates saves almost nothing — the design therefore proposes **all 12 dates**, which removes sampling error from population (a)/(b)/(c) classification entirely.
+
+### 2. Three-population output structure
+
+Every unmapped game resolves to exactly one:
+
+- **(a) mapped-repairable** — already carries an approved `odds_api` event. **13 remain** (measured 2026-08-05). ~40cr/event.
+- **(b) unmapped-but-discovery-recoverable** — discovery returns exactly one deterministically-matching event. Cost: the date's 1cr discovery (shared across that date's games) + ~40cr per recovered event.
+- **(c) unmapped-and-unrecoverable** — no match, or ambiguous/multi-match that cannot be resolved deterministically. **No paid path exists.** Roll-off-only unless another authoritative source is separately approved. **Must be counted explicitly**, because this population **caps how far repair can reduce suppression at all**.
+
+Report per game: date · matchup · discovery outcome (`exact_match` / `ambiguous` / `no_match`) · resolved event id where applicable · credits consumed. Plus totals, the observed recovery rate, and confidence limitations.
+
+### 3. ⚠️ Cross-era cadence: the premise does not hold — CORRECTED
+
+The founder's requirement was to design the sample to also test whether the tight `262–263s` cadence band holds **on older slates**. Read-only enumeration shows **there is no older in-scope population**:
+
+- The **unmapped tail spans `2026-07-12 .. 2026-07-30`** — the **same era** as the 12 already-proven games (`2026-07-12 .. 2026-07-29`). It is not older; it is interleaved.
+- The **entire repairable backlog** (13 mapped + 24 unmapped = **37 games**) lives in that one era.
+- The only genuinely older unrepaired games are **2** (`2026-06-03`, `2026-06-30`) — the GAP-30 permanent holes. They sit **outside the recent-N window** (which now spans `2026-07-12 .. 2026-08-05`), so repairing them **cannot reduce suppression by even one game**.
+- The **169 pre-07-12 games already carry usable hlr** from the original seed. That era is covered, but it was retrieved at a different time and is **not evidence about archive cadence today**.
+
+**Therefore: cross-era cadence probes have no in-scope target.** Spending ~40cr each on the 2 pre-window games would answer the cadence question for an older era while moving the gate by zero. **This design does not propose them.** If the founder wants that datum for its own sake — e.g. to de-risk a future older-season backfill — it should be authorized explicitly as *research*, not folded into a repair budget.
+
+**The residual risk, stated accurately.** The real uncertainty is **not** era. It is whether any individual game had a provider-coverage gap. The 21/21 band is tight enough (`262–263s`) to suggest the archive stores snapshots on a fixed cadence relative to commence time; if so the mechanism is uniform across this era and the remaining 37 should behave alike. What remains unmeasured is per-game coverage dropout, which **only an event-odds fetch on each game can reveal** — i.e. it is measured by the repair itself, not by a probe. **The honest margin to carry in the budget is therefore a stale-allowance on the whole population, not an era-specific one.**
+
+### 4. Budget re-sizing method (mechanical once the sample runs)
+
+```
+recovery_rate   = recovered_events / unmapped_games_attempted      (measured by the sample)
+N_a             = 13   (mapped-repairable, measured 2026-08-05)
+N_b             = round(24 × recovery_rate)                        (discovery-recoverable)
+N_c             = 24 − N_b                                         (unrecoverable; NO paid path)
+discovery_cost  = 12                                               (12 dates × 1cr, one-time)
+
+full_backlog_cr = discovery_cost
+                + N_a × 40 × (1 + stale_allowance)
+                + N_b × 40 × (1 + stale_allowance)
+```
+
+`stale_allowance` is the population-wide margin from §3 — **currently 0/21 observed**, so a *measured* value of 0.0 with an explicitly chosen safety margin (the founder's call; 0.10 would price ~4 wasted calls across 37). **`N_c` games are excluded from the budget entirely** and carried forward as a permanent coverage cap.
+
+**Illustrative only** (recovery 0.75, allowance 0.10): `12 + 13×44 + 18×44 ≈ 1,376cr`, leaving **6 games permanently unrepairable**. Real figures come from the sample.
+
+### 5. What the sample does and does not settle
+
+**Settles:** the (a)/(b)/(c) split, the discovery recovery rate, the exact remaining paid-repair population, and therefore the full-backlog budget.
+**Does not settle:** per-game close-capture cadence — that is only observable by fetching each game, and is priced via `stale_allowance` rather than probed.
+
+**Forecast for the sample as designed: 12 credits** (all 12 dates, discovery only). No event-odds probes proposed.
+
+### 6. Standing context at finalization (2026-08-05)
+
+- **Batch-1 complete** (10/10) and the **free `ec2c04c9` repair complete** — gate now **42/55 unresolved**.
+- **No free progress remains.** `ec2c04c9` was the only backlog game already seeded at leg 2; every remaining game is population (b) at ~41cr or population (c) at no price.
+- **`N_a = 13` mapped-repairable** remain (measured 2026-08-05); the 24 unmapped are what this sample classifies.
+- **`stale_allowance` is measured at 0/21** in-window observations, all within a `262–263s` band. The safety margin applied to that measurement is a founder decision, not an implementation one.
+
+**Execution remains gated. The full-backlog run additionally requires §5 (governed replayable payload) and the provider-terms answer.**
+
 ## Invariants (carried unchanged)
 
 - **Neither `actual_start_utc` nor `scheduled_start_utc` is ever written or synthesized**; no timestamp derived from a date-only field (GAP-31). Boundary comes only from the committed `evaluateCloseBoundary`.
