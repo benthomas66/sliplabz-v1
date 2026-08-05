@@ -23,6 +23,10 @@
 //     --dry-run             BEGIN/ROLLBACK per batch; no persistent effect.
 //     --market <key>        restrict to one market (spot-check).
 //     --batch-size N        override DEFAULT_BATCH_SIZE (500).
+//     --game <uuid>         restrict to explicit internal_game_id(s);
+//                           repeatable. Reuses the committed
+//                           restrict_to_internal_game_ids scope parameter.
+//                           Omit for the historical global behaviour.
 
 import pg from 'pg';
 
@@ -39,12 +43,20 @@ interface Args {
   readonly dry_run: boolean;
   readonly only_market: string | null;
   readonly batch_size: number;
+  /** Explicit game restriction (repeatable `--game`). Empty = global. */
+  readonly games: ReadonlyArray<string>;
 }
 
 function parseArgs(argv: readonly string[]): Args {
   let dry_run = false;
   let only_market: string | null = null;
   let batch_size = DEFAULT_BATCH_SIZE;
+  // V1-OP-8c Track 1: repeatable game restriction, reusing the COMMITTED
+  // `restrict_to_internal_game_ids` scope parameter (`54c346d`). Narrowing
+  // only — the eligibility SQL, grain, and UPSERT are untouched, so a grain
+  // processed under it is byte-identical to an unrestricted run. Omitting the
+  // flag preserves the historical global behaviour exactly.
+  const games: string[] = [];
   for (let i = 0; i < argv.length; i += 1) {
     const a = argv[i];
     if (a === '--dry-run') dry_run = true;
@@ -60,9 +72,15 @@ function parseArgs(argv: readonly string[]): Args {
       if (!Number.isFinite(n) || n < 1) throw new Error('--batch-size must be a positive integer');
       batch_size = Math.floor(n);
       i += 1;
+    } else if (a === '--game') {
+      const v = argv[i + 1];
+      if (v === undefined) throw new Error('--game requires a value');
+      if (v.trim() === '') throw new Error('--game requires a non-empty internal_game_id');
+      games.push(v.trim());
+      i += 1;
     }
   }
-  return { dry_run, only_market, batch_size };
+  return { dry_run, only_market, batch_size, games };
 }
 
 function redactUrl(u: string): string {
@@ -188,6 +206,7 @@ async function main(): Promise<void> {
     batch_size: args.batch_size,
     dry_run: args.dry_run,
     ...(args.only_market !== null ? { only_market: args.only_market } : {}),
+    ...(args.games.length > 0 ? { restrict_to_internal_game_ids: args.games } : {}),
     on_batch: (progress) => {
       batches_reported += 1;
       // Cheap progress line — full counters on end of run below.
