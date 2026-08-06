@@ -45,7 +45,17 @@ describe('BDL HTTP client — safety invariants', () => {
     assert.ok(existsSync(p), '.env.example missing');
     const s = readFileSync(p, 'utf8');
     assert.match(s, /^BALLDONTLIE_API_KEY=\s*$/m);
-    assert.match(s, /^BDL_LIVE_INVOKE=\s*$/m);
+    // GAP-45 (2026-08-06): the template must NOT assign the live-invoke flag.
+    // It previously shipped an empty `BDL_LIVE_INVOKE=` placeholder, which
+    // seeded the key into every copied `.env` — so sourcing `.env` to supply
+    // the API key silently opened the environment gate and left `--apply` as
+    // the only barrier to paid spend. The flag is now passed explicitly per
+    // authorized run. Documented in a comment, never assigned.
+    assert.ok(
+      !/^\s*(export\s+)?BDL_LIVE_INVOKE\s*=/m.test(s),
+      'BDL_LIVE_INVOKE must not be assigned in .env.example (GAP-45)',
+    );
+    assert.match(s, /BDL_LIVE_INVOKE/, 'still documented in a comment');
   });
 
   it('buildBdlUrl serializes array params using repeated bracketed keys (BDL §3B)', () => {
