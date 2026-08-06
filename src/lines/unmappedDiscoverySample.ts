@@ -204,7 +204,19 @@ export interface DiscoveryDeps {
    * `ctx` carries the request/response evidence the ledger row needs; keeping
    * the SQL out of this module is what makes the report-only property testable.
    */
-  readonly recordLedger?: (row: DiscoveryLedgerRow, ctx: DiscoveryCallContext) => Promise<void>;
+  readonly recordLedger?: (row: DiscoveryLedgerRow, ctx: DiscoveryCallContext) => Promise<string | void>;
+  /**
+   * GAP-43 (identifier side). Persists the per-game classification, carrying
+   * the discovered `matched_event_id`, so tranche manifests are authored from
+   * the database instead of a fresh paid probe. Additive: when absent the run
+   * behaves exactly as before.
+   */
+  readonly recordResult?: (input: {
+    readonly oddsapi_ingestion_run_id: string;
+    readonly probe_at: string;
+    readonly classification: GameClassification;
+    readonly provider_commence_time: string | null;
+  }) => Promise<void>;
   readonly on_probe?: (probe_at: string, events: number, games: number, row: DiscoveryLedgerRow) => void;
 }
 
@@ -342,7 +354,7 @@ export async function runDiscoverySample(
       x_requests_used: num('x-requests-used'), cumulative_sample_spend: cumulative,
     });
     ledger.push(row);
-    await deps.recordLedger?.(row, {
+    const run_id = await deps.recordLedger?.(row, {
       at_timestamp, redacted_request_url: res.redacted_request_url,
       response_headers: res.headers, retrieved_at,
     });
@@ -350,7 +362,22 @@ export async function runDiscoverySample(
     const body = res.body_json as { data?: ReadonlyArray<DiscoveredEvent> } & ReadonlyArray<DiscoveredEvent>;
     const events: ReadonlyArray<DiscoveredEvent> = Array.isArray(body) ? body : (body.data ?? []);
     deps.on_probe?.(at_timestamp, events.length, group.games.length, row);
-    for (const g of group.games) rows.push(classifyGame(g, events, group.probe_at));
+    for (const g of group.games) {
+      const c = classifyGame(g, events, group.probe_at);
+      rows.push(c);
+      // GAP-43: make the identifier durable while we still hold it.
+      if (deps.recordResult !== undefined && typeof run_id === 'string') {
+        const matched = c.matched_event_id === null
+          ? undefined
+          : events.find((e) => e.id === c.matched_event_id);
+        await deps.recordResult({
+          oddsapi_ingestion_run_id: run_id,
+          probe_at: group.probe_at,
+          classification: c,
+          provider_commence_time: matched?.commence_time ?? null,
+        });
+      }
+    }
   }
 
   return Object.freeze({

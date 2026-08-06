@@ -28,6 +28,7 @@ import {
   type SampleReport,
 } from '../src/lines/unmappedDiscoverySample.js';
 import { recordDiscoveryLedgerInTx } from '../src/lines/discoverySampleLedger.js';
+import { recordDiscoveryResultInTx } from '../src/lines/discoveryResultCapture.js';
 import { buildLiveOddsapiConfig } from '../src/lines/liveInvokeGate.js';
 
 interface Args {
@@ -164,6 +165,7 @@ async function main(): Promise<void> {
         ? { fetchEvents: ((): never => { throw new Error('dry-run: the discovery seam is unreachable without --apply and ODDSAPI_LIVE_INVOKE=1'); }) as never }
         : {}),
       recordLedger: async (row, ctx) => {
+        let out = '';
         await withTransaction(pool, async (tx) => {
           const id = await recordDiscoveryLedgerInTx(tx, {
             row,
@@ -173,7 +175,18 @@ async function main(): Promise<void> {
             retrieved_at: ctx.retrieved_at,
           });
           console.log(`  [ledger] ${row.slate_date}  1cr  cum=${row.cumulative_sample_spend}  remaining=${row.x_requests_remaining}  run_id=${id}`);
+          out = id;
         });
+        return out;
+      },
+      // GAP-43 identifier side: persist the discovered event id per game.
+      recordResult: async (input) => {
+        await withTransaction(pool, async (tx) => {
+          await recordDiscoveryResultInTx(tx, input);
+        });
+        if (input.classification.matched_event_id !== null) {
+          console.log(`    [capture] ${input.classification.internal_game_id.slice(0, 8)}  event_id=${input.classification.matched_event_id}`);
+        }
       },
       on_probe: (probe_at, events, games) => {
         console.log(`  [discovery] probe=${probe_at}  events=${events}  serves ${games} game(s)`);
