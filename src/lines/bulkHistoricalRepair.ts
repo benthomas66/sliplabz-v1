@@ -65,8 +65,21 @@ export interface BatchReport {
 export interface AtomicGamePersistDeps {
   /** Runs `body` inside ONE game-level transaction (production: withTransaction). */
   readonly runInGameTransaction: <T>(body: (tx: Tx) => Promise<T>) => Promise<T>;
-  /** Committed persist, in-transaction form. Called once per triple. */
-  readonly persistTripleInTx: (tx: Tx, group: TripleGroup) => Promise<{ readonly source_closing_quote_ids: ReadonlyArray<string> }>;
+  /**
+   * Committed persist, in-transaction form. Called once per triple.
+   *
+   * GAP-46: `carries_quota_trail` is true for EXACTLY ONE triple per paid call.
+   * Each triple writes its own `oddsapi_ingestion_runs` row, so replicating the
+   * whole-call quota trail onto all of them made `SUM(quota_observed)` report
+   * `calls x triples x 40` instead of `calls x 40` — a 24-48x over-count in the
+   * designated DB-reconcilable spend record. The trail now rides one row; the
+   * siblings bind NULL (the columns are nullable by the GAP-38 design).
+   */
+  readonly persistTripleInTx: (
+    tx: Tx,
+    group: TripleGroup,
+    carries_quota_trail: boolean,
+  ) => Promise<{ readonly source_closing_quote_ids: ReadonlyArray<string> }>;
   /**
    * GAP-40 §5. Read back the ACTUAL persisted row counts for the game, inside
    * the same transaction. The ledger is the attribution source of truth for
@@ -107,8 +120,9 @@ export async function persistGameAtomically(
 ): Promise<AtomicGameResult> {
   return deps.runInGameTransaction(async (tx) => {
     let scq = 0;
-    for (const group of triples) {
-      const r = await deps.persistTripleInTx(tx, group);
+    for (let i = 0; i < triples.length; i += 1) {
+      // GAP-46: the billed quota trail rides the FIRST triple only.
+      const r = await deps.persistTripleInTx(tx, triples[i]!, i === 0);
       scq += r.source_closing_quote_ids.length;
     }
     const canonical = await deps.canonicalInTx(tx, internal_game_id);

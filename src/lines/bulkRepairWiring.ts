@@ -216,7 +216,7 @@ export function buildBatchApplyDeps(cfg: BatchWiringConfig): BatchRunnerDeps {
 
     runInGameTransaction: cfg.runInGameTransaction,
 
-    persistTripleInTx: async (tx, group) => {
+    persistTripleInTx: async (tx, group, carries_quota_trail) => {
       // Corrective A: NON-NULL by construction. Never `null`.
       if (linked_game_id === '') throw new Error('V1-OP-8c: persist attempted before a game was selected');
       const r = await persistHistoricalSnapshotInTx(tx, {
@@ -243,7 +243,10 @@ export function buildBatchApplyDeps(cfg: BatchWiringConfig): BatchRunnerDeps {
         raw_response_body: null,
         raw_response_body_text: null,
         candidates: group.candidates,
-        ...(quota !== undefined
+        // GAP-46: only the FIRST triple of a paid call carries the billed
+        // trail. Each triple writes its own ledger row, so replicating it
+        // made SUM(quota_observed) report calls x triples x 40.
+        ...(quota !== undefined && carries_quota_trail
           ? {
               quota_reconciliation: {
                 forecast: quota.forecast,

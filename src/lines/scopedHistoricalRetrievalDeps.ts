@@ -83,9 +83,13 @@ export function buildScopedRetrievalDeps(
   base: Pick<ScopedRetrievalDeps, 'processSnapshot' | 'loadFixtureSnapshot'>,
 ): ScopedRetrievalDeps {
   let persistIndex = 0;
-  // GAP-38: the reconciliation for THIS paid call, captured at the fetch seam
-  // and persisted to the ledger by every triple of the same request.
+  // GAP-38: the reconciliation for THIS paid call, captured at the fetch seam.
+  // GAP-46: it rides EXACTLY ONE ledger row per paid call, not every triple —
+  // each triple writes its own `oddsapi_ingestion_runs` row, so replicating the
+  // trail made SUM(quota_observed) report `calls x triples x 40`.
   let quota_reconciliation: PersistQuotaReconciliation | undefined;
+  // Set once the trail has been attached to a row for the current paid call.
+  let quota_trail_claimed = false;
 
   return {
     // READ-ONLY. Boundary from the committed primitive over STORED fields.
@@ -137,6 +141,7 @@ export function buildScopedRetrievalDeps(
         forecast: plan.forecast_total_credits,
         observed_x_requests_last,
       });
+      quota_trail_claimed = false; // a new paid call owns a fresh trail
       quota_reconciliation = {
         forecast: rq.forecast,
         observed: rq.observed,
