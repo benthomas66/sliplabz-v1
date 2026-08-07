@@ -34,6 +34,7 @@ import {
   type ManifestEntry,
 } from '../src/lines/bulkHistoricalRepair.js';
 import { buildBatchApplyDeps } from '../src/lines/bulkRepairWiring.js';
+import { recordPaidCallBillingInTx } from '../src/lines/paidCallBilling.js';
 import { buildLiveOddsapiConfig } from '../src/lines/liveInvokeGate.js';
 import { openPool } from '../src/db/connection.js';
 import { withTransaction } from '../src/db/transaction.js';
@@ -107,6 +108,12 @@ async function buildApplyDeps(): Promise<BatchRunnerDeps> {
   const api_key = process.env['ODDS_API_KEY'];
   if (api_key === undefined || api_key === '') throw new Error('# V1-OP-8b: ODDS_API_KEY required for --apply.');
   return buildBatchApplyDeps({
+    // GAP-47: the charge record commits in its OWN short transaction at
+    // fetch-return, so an interrupted or failed game still leaves the credit
+    // it consumed auditable in the ledger.
+    recordBilling: async (input) => {
+      await withTransaction(pool, async (tx) => { await recordPaidCallBillingInTx(tx, input); });
+    },
     pool,
     connection_string: db_url,
     oddsapi_config: buildLiveOddsapiConfig({ allow_live_invoke: true }),

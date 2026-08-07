@@ -68,18 +68,13 @@ export interface AtomicGamePersistDeps {
   /**
    * Committed persist, in-transaction form. Called once per triple.
    *
-   * GAP-46: `carries_quota_trail` is true for EXACTLY ONE triple per paid call.
-   * Each triple writes its own `oddsapi_ingestion_runs` row, so replicating the
-   * whole-call quota trail onto all of them made `SUM(quota_observed)` report
-   * `calls x triples x 40` instead of `calls x 40` — a 24-48x over-count in the
-   * designated DB-reconcilable spend record. The trail now rides one row; the
-   * siblings bind NULL (the columns are nullable by the GAP-38 design).
+   * GAP-46 + GAP-47: these rows carry NO quota trail. Replicating the whole-call
+   * trail onto every triple made `SUM(quota_observed)` report `calls x triples
+   * x 40`; and because these rows live inside the game transaction, a rollback
+   * erased the charge record entirely. The durable billing row is now written
+   * once per paid call in its own transaction at fetch-return.
    */
-  readonly persistTripleInTx: (
-    tx: Tx,
-    group: TripleGroup,
-    carries_quota_trail: boolean,
-  ) => Promise<{ readonly source_closing_quote_ids: ReadonlyArray<string> }>;
+  readonly persistTripleInTx: (tx: Tx, group: TripleGroup) => Promise<{ readonly source_closing_quote_ids: ReadonlyArray<string> }>;
   /**
    * GAP-40 §5. Read back the ACTUAL persisted row counts for the game, inside
    * the same transaction. The ledger is the attribution source of truth for
@@ -120,9 +115,8 @@ export async function persistGameAtomically(
 ): Promise<AtomicGameResult> {
   return deps.runInGameTransaction(async (tx) => {
     let scq = 0;
-    for (let i = 0; i < triples.length; i += 1) {
-      // GAP-46: the billed quota trail rides the FIRST triple only.
-      const r = await deps.persistTripleInTx(tx, triples[i]!, i === 0);
+    for (const group of triples) {
+      const r = await deps.persistTripleInTx(tx, group);
       scq += r.source_closing_quote_ids.length;
     }
     const canonical = await deps.canonicalInTx(tx, internal_game_id);

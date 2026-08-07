@@ -30,6 +30,8 @@ import { runHistoricalLineResultsBackfillInTx } from './historicalLineResultsBac
 import { groupCandidatesByTriple } from './scopedHistoricalRetrieval.js';
 import { processHistoricalSnapshot } from '../seed/historicalEventOdds.js';
 import { evaluateCloseBoundary } from './closeBoundary.js';
+import type { PaidCallBillingInput } from './paidCallBilling.js';
+import { recordPaidCallBillingInTx } from './paidCallBilling.js';
 import { reconcileQuota } from '../odds/quotaForecast.js';
 import { forecastHistoricalEventOddsCost } from '../odds/quotaForecast.js';
 import { LAUNCH_MARKET_KEYS } from '../odds/marketKeys.js';
@@ -80,6 +82,13 @@ export interface BatchWiringConfig {
   readonly seed_run_id_factory: () => string;
   readonly now: () => string;
   readonly runInGameTransaction: <T>(body: (tx: Tx) => Promise<T>) => Promise<T>;
+  /**
+   * GAP-47. Commits the durable charge record in its OWN short transaction,
+   * called at fetch-return BEFORE the game transaction opens. Separated from
+   * persistence because a charge is true the instant the provider answers,
+   * whereas a quote is true only if the whole game lands.
+   */
+  readonly recordBilling: (input: PaidCallBillingInput) => Promise<void>;
   /** Injected so a test can supply a recorded response with zero HTTP. */
   readonly fetchHistorical?: typeof fetchHistoricalEventOdds;
   /** Observability hook: the quota trail actually persisted, per request. */
@@ -195,6 +204,29 @@ export function buildBatchApplyDeps(cfg: BatchWiringConfig): BatchRunnerDeps {
       });
       cfg.on_quota_trail?.(entry, quota);
 
+        // GAP-47: commit the charge record NOW, in its own short transaction,
+        // BEFORE the game transaction opens. The provider has already billed;
+        // if persistence later rolls back, this row must survive it.
+        await cfg.recordBilling({
+          provider_event_id,
+          internal_game_id: entry.internal_game_id,
+          close_boundary_utc: boundary_utc,
+          market_keys: [...LAUNCH_MARKET_KEYS],
+          bookmaker_keys: V1_BOOKMAKER_ALLOWLIST.map((b) => b.provider_key),
+          redacted_request_url: res.redacted_request_url,
+          http_status: res.status,
+          retrieved_at: cfg.now(),
+          response_headers: res.headers,
+          quota: {
+            forecast: quota.forecast,
+            observed: quota.observed,
+            delta_flag: quota.delta_flag,
+            x_requests_last: quota.x_requests_last,
+            x_requests_remaining: quota.x_requests_remaining,
+            x_requests_used: quota.x_requests_used,
+          },
+        });
+
       const response = res.body_json as HistoricalEventOddsResponse;
       snapshot_ts = response.timestamp ?? null;
       const processed = processHistoricalSnapshot({
@@ -216,7 +248,7 @@ export function buildBatchApplyDeps(cfg: BatchWiringConfig): BatchRunnerDeps {
 
     runInGameTransaction: cfg.runInGameTransaction,
 
-    persistTripleInTx: async (tx, group, carries_quota_trail) => {
+    persistTripleInTx: async (tx, group) => {
       // Corrective A: NON-NULL by construction. Never `null`.
       if (linked_game_id === '') throw new Error('V1-OP-8c: persist attempted before a game was selected');
       const r = await persistHistoricalSnapshotInTx(tx, {
@@ -243,22 +275,10 @@ export function buildBatchApplyDeps(cfg: BatchWiringConfig): BatchRunnerDeps {
         raw_response_body: null,
         raw_response_body_text: null,
         candidates: group.candidates,
-        // GAP-46: only the FIRST triple of a paid call carries the billed
-        // trail. Each triple writes its own ledger row, so replicating it
-        // made SUM(quota_observed) report calls x triples x 40.
-        ...(quota !== undefined && carries_quota_trail
-          ? {
-              quota_reconciliation: {
-                forecast: quota.forecast,
-                observed: quota.observed,
-                delta_flag: quota.delta_flag,
-                x_requests_last: quota.x_requests_last,
-                // GAP-40: route the balance-curve fields to the ledger.
-                x_requests_remaining: quota.x_requests_remaining,
-                x_requests_used: quota.x_requests_used,
-              },
-            }
-          : {}),
+          // GAP-46 + GAP-47: these rows carry NO quota trail. Replicating it
+          // per triple over-counted spend 24-48x; and because they live inside
+          // the game transaction, a rollback erased the charge record entirely.
+          // `paidCallBilling.ts` writes one durable row per paid call instead.
       });
       return { source_closing_quote_ids: r.source_closing_quote_ids };
     },

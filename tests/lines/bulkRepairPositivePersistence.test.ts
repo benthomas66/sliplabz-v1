@@ -149,6 +149,8 @@ function buildDeps(db: ReturnType<typeof controlledDb>, calls: { n: number }, tr
     api_key: 'TEST-KEY',
     seed_run_id_factory: () => '11111111-1111-1111-1111-111111111111',
     now: () => '2026-08-04T00:00:00Z',
+    // GAP-47: the durable charge record commits in its own transaction.
+    recordBilling: async () => {},
     runInGameTransaction: db.runInGameTransaction,
     fetchHistorical: recordedFetch(calls),
     on_quota_trail: (_e, t) => trails.push(t),
@@ -265,25 +267,17 @@ describe('V1-OP-8c (C) COMPLETE quota trail persisted', () => {
         assert.ok(w.sql.includes(col), `${col} is in the INSERT column list`);
       }
     }
-    // GAP-46 (2026-08-06): this loop previously required EVERY row to carry the
-    // billed trail — which is exactly the defect: each triple writes its own
-    // ledger row, so `SUM(quota_observed)` reported `calls x triples x 40`.
-    // The contract is now CARDINALITY: exactly ONE row per paid call carries
-    // the trail, and that row still carries all six fields (GAP-40 intact).
+    // GAP-46 -> GAP-47 (2026-08-07): this assertion has moved. It once required
+    // EVERY game-transaction row to carry the billed trail (the 24-48x
+    // over-count), then exactly one. It is now ZERO: the charge record lives on
+    // a durable billing row written in its OWN transaction at fetch-return, so
+    // it survives a persistence rollback. Cardinality + durability are asserted
+    // in tests/lines/quotaTrailCardinality.test.ts against the real wiring.
     const tails = runs.map((w) => w.params.slice(-6));
-    const carrying = tails.filter((t) => t.some((v) => v !== null && v !== undefined));
-    assert.equal(carrying.length, 1, `exactly one row per paid call carries the billed quota; got ${carrying.length}`);
-    assert.deepEqual(
-      carrying[0],
-      [40, 40, 'exact_match', 40, 99347, 653],
-      `persisted quota params were ${JSON.stringify(carrying[0])}`,
-    );
-    assert.ok(carrying[0]!.every((v) => v !== null && v !== undefined), 'NO ledger column lands null on the trail row');
-    for (const t of tails.filter((x) => x !== carrying[0])) {
-      assert.deepEqual(t, [null, null, null, null, null, null], 'sibling triple rows bind NULL');
+    for (const t of tails) {
+      assert.deepEqual(t, [null, null, null, null, null, null],
+        'game-transaction rows carry NO quota trail — billing is decoupled (GAP-47)');
     }
-    const summed = tails.reduce((a, t) => a + (typeof t[1] === 'number' ? t[1] : 0), 0);
-    assert.equal(summed, 40, 'SUM(quota_observed) equals actual spend, not spend x triples');
     // the batch-side cumulative is reported on the batch, not the row
     assert.equal(trails[0]!.cumulative_batch_spend, 40, 'batch-attributed, not a global delta');
   });
