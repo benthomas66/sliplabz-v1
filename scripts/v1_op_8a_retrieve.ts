@@ -42,6 +42,8 @@ import {
 } from '../src/lines/scopedHistoricalRetrieval.js';
 import { processHistoricalSnapshot } from '../src/seed/historicalEventOdds.js';
 import { buildScopedRetrievalDeps } from '../src/lines/scopedHistoricalRetrievalDeps.js';
+import { recordPaidCallBillingInTx } from '../src/lines/paidCallBilling.js';
+import { withTransaction } from '../src/db/transaction.js';
 import { buildLiveOddsapiConfig } from '../src/lines/liveInvokeGate.js';
 import { openPool } from '../src/db/connection.js';
 import { evaluateCloseBoundary } from '../src/lines/closeBoundary.js';
@@ -151,6 +153,14 @@ async function buildApplyDeps(): Promise<ScopedRetrievalDeps> {
   }
   return buildScopedRetrievalDeps(
     {
+      // GAP-47 (class-closed): the charge record commits in its OWN short
+      // transaction at fetch-return, before the persist opens — identical to
+      // the bulk path. The operator supplies the target game id by closure.
+      recordBilling: async (input) => {
+        await withTransaction(sliplabzPool, async (tx) => {
+          await recordPaidCallBillingInTx(tx, { ...input, internal_game_id: CLI.game ?? '' });
+        });
+      },
       pool: sliplabzPool,
       connection_string: db_url,
       oddsapi_config,

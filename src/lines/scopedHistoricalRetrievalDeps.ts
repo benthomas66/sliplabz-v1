@@ -40,6 +40,7 @@ import { deleteAndReplaceCanonicalClosingPointsFromDb } from '../seed/orchestrat
 import { runHistoricalLineResultsBackfill } from './historicalLineResultsBackfill.js';
 import { reconcileQuota } from '../odds/quotaForecast.js';
 import { evaluateCloseBoundary } from './closeBoundary.js';
+import type { PaidCallBillingInput } from './paidCallBilling.js';
 import type { OddsapiHttpConfig } from '../odds/httpClient.js';
 import type { SliplabzPool } from '../db/connection.js';
 import type { HistoricalEventOddsResponse } from '../seed/types.js';
@@ -48,10 +49,8 @@ import type { ScopedRetrievalDeps, TripleGroup, ScopedRetrievalPlan } from './sc
 /** V1-4b Phase B used computation_version=2 for the corrected canonical pass. */
 export const CANONICAL_COMPUTATION_VERSION = 2;
 
-/** GAP-38 ledger payload threaded from the paid seam into the persist. */
-type PersistQuotaReconciliation = NonNullable<
-  Parameters<typeof persistHistoricalSnapshot>[1]['quota_reconciliation']
->;
+// GAP-47: `quota_reconciliation` is gone from the persist contract entirely.
+// Billing is written by `recordPaidCallBillingInTx` in its own transaction.
 
 export interface WiringConfig {
   readonly pool: SliplabzPool;
@@ -63,6 +62,15 @@ export interface WiringConfig {
   readonly player_ids_by_normalized_name: ReadonlyMap<string, string>;
   /** Optional fault injection for the GAP-37 resume proof (test-only). */
   readonly on_before_persist_triple?: (group: TripleGroup, index: number) => void;
+  /**
+   * GAP-47 (class-closed). Commits the durable charge record in its OWN short
+   * transaction at fetch-return, before the persist transaction opens — the
+   * same seam the bulk path uses. After this conversion NO path can write
+   * billing inside a rollback-capable persist tx.
+   *
+   * The operator supplies `internal_game_id` by closure (it owns the target).
+   */
+  readonly recordBilling: (input: Omit<PaidCallBillingInput, 'internal_game_id'>) => Promise<void>;
 }
 
 /** Redacted URL shape persisted alongside the raw response. Never the key. */
@@ -83,13 +91,7 @@ export function buildScopedRetrievalDeps(
   base: Pick<ScopedRetrievalDeps, 'processSnapshot' | 'loadFixtureSnapshot'>,
 ): ScopedRetrievalDeps {
   let persistIndex = 0;
-  // GAP-38: the reconciliation for THIS paid call, captured at the fetch seam.
-  // GAP-46: it rides EXACTLY ONE ledger row per paid call, not every triple —
-  // each triple writes its own `oddsapi_ingestion_runs` row, so replicating the
-  // trail made SUM(quota_observed) report `calls x triples x 40`.
-  let quota_reconciliation: PersistQuotaReconciliation | undefined;
-  // Set once the trail has been attached to a row for the current paid call.
-  let quota_trail_claimed = false;
+
 
   return {
     // READ-ONLY. Boundary from the committed primitive over STORED fields.
@@ -141,13 +143,29 @@ export function buildScopedRetrievalDeps(
         forecast: plan.forecast_total_credits,
         observed_x_requests_last,
       });
-      quota_trail_claimed = false; // a new paid call owns a fresh trail
-      quota_reconciliation = {
-        forecast: rq.forecast,
-        observed: rq.observed,
-        delta_flag: rq.delta_flag,
-        x_requests_last: observed_x_requests_last,
+      // GAP-47: make the charge durable HERE, before any persist transaction
+      // opens, so an interrupted persist still leaves the credit auditable.
+      const hdr = (k: string): number | null => {
+        const v = res.headers[k];
+        const n = typeof v === 'number' ? v : typeof v === 'string' ? Number(v) : NaN;
+        return Number.isFinite(n) ? n : null;
       };
+      await cfg.recordBilling({
+        provider_event_id: plan.provider_event_id,
+        close_boundary_utc: plan.at_timestamp,
+        market_keys: [...plan.market_keys],
+        bookmaker_keys: [...plan.bookmaker_keys],
+        redacted_request_url: redactedHistoricalUrl(plan.provider_event_id, plan.at_timestamp),
+        http_status: res.status,
+        retrieved_at: new Date().toISOString(),
+        response_headers: res.headers,
+        quota: {
+          forecast: rq.forecast, observed: rq.observed, delta_flag: rq.delta_flag,
+          x_requests_last: observed_x_requests_last,
+          x_requests_remaining: hdr('x-requests-remaining'),
+          x_requests_used: hdr('x-requests-used'),
+        },
+      });
       return {
         response: res.body_json as HistoricalEventOddsResponse,
         observed_x_requests_last,
@@ -189,7 +207,9 @@ export function buildScopedRetrievalDeps(
         candidates: group.candidates,
         // GAP-38: present only on a live (paid) run; undefined otherwise, so
         // the persist keeps its historical null-column behavior.
-        ...(quota_reconciliation !== undefined ? { quota_reconciliation } : {}),
+        // GAP-47: persist rows carry NO billing. The durable billing row is
+        // the sole quota-bearing row, so `quota_observed IS NOT NULL` means
+        // exactly "billing row", never a lineage row.
       });
       return { source_closing_quote_ids: r.source_closing_quote_ids };
     },

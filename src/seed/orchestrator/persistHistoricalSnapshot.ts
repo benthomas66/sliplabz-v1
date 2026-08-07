@@ -86,20 +86,6 @@ export interface PersistHistoricalSnapshotInput {
    * pre-existing caller), the four quota columns stay NULL and the INSERT is
    * otherwise byte-identical to its previous behavior.
    */
-  readonly quota_reconciliation?: {
-    readonly forecast: number;
-    readonly observed: number | null;
-    readonly delta_flag: QuotaDeltaFlag;
-    readonly x_requests_last: number | null;
-    /**
-     * GAP-40. The provider's running balance at this request. Without it the
-     * spend CURVE across an unattended batch is not reconstructable from the
-     * DB — the original GAP-38 objective.
-     */
-    readonly x_requests_remaining?: number | null;
-    /** GAP-40. Provider-side cumulative usage at this request. */
-    readonly x_requests_used?: number | null;
-  };
   /**
    * @deprecated (V1-4b Phase B correction). Ignored. The per-(event,
    * bookmaker, market) transaction is the WRONG grain for canonical
@@ -205,14 +191,14 @@ export async function persistHistoricalSnapshotInTx(
         'application/json',
         JSON.stringify(input.response_headers),
         // GAP-38: null for callers that supply no reconciliation (seed path).
-        input.quota_reconciliation?.forecast ?? null,
-        input.quota_reconciliation?.observed ?? null,
-        input.quota_reconciliation?.delta_flag ?? null,
-        input.quota_reconciliation?.x_requests_last ?? null,
+        null, // GAP-47: billing never rides the persist lineage row
+        null,
+        null,
+        null,
         // GAP-40: the balance-curve columns. Null when absent, so every
         // pre-existing caller (incl. the seed path) is byte-identical.
-        input.quota_reconciliation?.x_requests_remaining ?? null,
-        input.quota_reconciliation?.x_requests_used ?? null,
+        null,
+        null,
       ]
     );
 
